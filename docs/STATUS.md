@@ -1,21 +1,22 @@
-# 作業・検証状況（2026-10-30）
+# こもれび島の開拓記 — 検証状況
 
-## Git反映
+## 対象
 
-- GitHub: `surumeneco/AIGameLabo`
-- `develop` に3つのプロトタイプ、共通UI、テスト、ドキュメント、Pages Actionsをソース管理。
-- 本記録を含むGitコミットをリモート読み戻しで照合すること。mainへの統合・CI・Pagesは独立した状態として検証。
+- リポジトリ：\`surumeneco/AIGameLabo\`
+- スマートフォン縦画面・Phaser 3・GitHub Pages専用の静的試作。
+- 旧3案は履歴に保持。新企画は木材採集→橋→庭→灯台→自由な花飾り。
 
-## ローカル実行証拠
+## ローカルで実行済み
 
-- `npm test`: Node v22.16.0で11件成功。初回の防御反撃が発動しない不具合を修正し、回帰テストを追加。
-- `npm run validate:scenarios`: 生態3件、戦闘3戦で勝利可能な経路を検出。
-- Phaser 3とesbuildは当該コンテナの依存パッケージに存在せず、ブラウザ実機・ビルド成功は未実測。
-- CAT-TDDの公式runtime Guard / TestModel / Queue / process-closureは未実行。利用者指定の代替方式と実行済みのテストを区別。
+- Node v22.16.0で新ルールテスト9件成功（保存データ検証の回帰テストを追加）。旧3案のテスト11件は旧リポジトリで成功済み。統合後の全テストはGitHub CIで確認する。
+- JavaScript構文チェック成功。
+- 単体HTML（Phaserではない独立のCanvas版）をChromiumモバイル相当で終端まで操作確認済み。
 
-## 試遊時の注目点
+## CIによる検証の受入条件
 
-- 野の法則: 採集任務を灯りなしでも徒歩突破可能。環境干渉が本当に面白さを生むか。
-- 遺物の迷宮: 遺物の選択で戦法が変わるか。防御反撃を修正済み。
-- 機構工房: 指定台座式が自由制作の楽しさとは異なる点。
-- 画面比率、タップ精度、因果予告、LocalStorage、フィードバックエクスポートは端末実機で確認する。
+- \`npm test\`、\`npm run build\`、\`npm run test:browser\` がすべて成功。
+- E2Eはビルド済みの実Phaser canvasをタップし、資材収集・建築・色選択・保存/リロードを検証。
+- CI成功とGitHub Pagesデプロイ成功は別に扱う。デプロイの404はPagesが有効化されていないことが原因の可能性があり、環境設定を確認する。
+- 本人の「ゲームとして面白い」という評価は未検証。
+
+[Actions一覧](https://github.com/surumeneco/AIGameLabo/actions) / [Pages設定](https://github.com/surumeneco/AIGameLabo/settings/pages)
