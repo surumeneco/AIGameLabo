@@ -35,7 +35,7 @@ try{
  await page.getByRole('button',{name:/夕焼け色の花を植える/}).click();
  await tap(150,500);
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('aigamelabo:komorebi-island:v3')));
- if(saved?.decorations?.length!==1)throw Error('Flower placement was not saved');
+ if(saved?.decorations?.length!==1){const toast=await page.locator('#toast').innerText();throw Error('Flower placement was not saved: '+JSON.stringify({phase:saved?.phase,beacon:saved?.beacon,decorations:saved?.decorations,toast}));}
  await page.reload({waitUntil:'networkidle'});
  if(!(await page.locator('#goal').innerText()).includes('島に明かりが戻った'))throw Error('Save not retained');
  await page.getByRole('button',{name:'遊び方'}).click();
