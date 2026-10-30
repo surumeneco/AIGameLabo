@@ -17,7 +17,7 @@ try{
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:393,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(`http://127.0.0.1:${server.address().port}/`,{waitUntil:'networkidle'});
+ await page.goto(`http://127.0.0.1:${server.address().port}/island.html`,{waitUntil:'networkidle'});
  await page.locator('#game canvas').waitFor();
  const goal=await page.locator('#goal').innerText();if(!goal.includes('木材を3個'))throw Error('First-screen goal missing: '+goal);
  // Tap actual Phaser canvas at the same coordinates used to render the objects.

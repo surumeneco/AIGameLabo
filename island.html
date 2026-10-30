@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#101b2b"><title>こもれび島の開拓記 | AIGameLabo</title><link rel="stylesheet" href="./island.css"></head>
+<body><main class="app"><header class="top"><div class="eyebrow">AIGameLabo / NEW PLAYTEST</div><div class="heading"><h1>こもれび島の開拓記</h1><button id="help-btn" class="mini" type="button">遊び方</button></div><p class="lead">小さな島を、あなたの手で少しずつ育てよう。</p></header>
+<section class="mission" aria-label="いまの目標"><div id="chapter" class="chapter"></div><h2 id="goal"></h2><p id="detail"></p><div class="bar"><div id="progress"></div></div></section>
+<section class="toolbar" aria-label="持ちもの"><div>🪵 木材 <strong id="wood">0</strong></div><div>🌼 花 <strong id="flowers">0</strong></div><div>💎 光る石 <strong id="crystals">0</strong></div></section>
+<section class="next"><div class="next-label">次にすること</div><p id="hint"></p><div id="actions" class="actions"></div></section>
+<section class="scene-box" aria-label="開拓する島の景色"><div id="game" class="game" role="application" aria-label="光っている木や花などをタップする島のゲーム"></div><div id="toast" class="toast" role="status" aria-live="polite"></div></section>
+<section id="guide" class="guide" hidden><h2>どうやって遊ぶ？</h2><p>光っている木・花・石を<strong>直接タップ</strong>すると、主人公が近づいて拾います。移動ボタンや難しい操作はありません。</p><p>必要な数が集まると「橋を架ける」などのボタンが表示されます。押すと、島の景色や行ける場所が変わります。</p><p>失敗や時間制限はありません。好きな速さで試してください。</p></section>
+<footer><button type="button" id="reset" class="text-btn">はじめから遊ぶ</button><small>保存：このブラウザ内のみ / 旧試作は <a href="./legacy.html">こちら</a></small></footer>
+</main><script defer src="./island.js"></script></body></html>
