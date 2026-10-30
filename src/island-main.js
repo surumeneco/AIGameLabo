@@ -4,7 +4,7 @@ import {NODES,newIsland,objective,available,interact,craft,validSave,progress,de
 const $ = id => document.getElementById(id);
 const SAVE_KEY='aigamelabo:komorebi-island:v3';
 function getSaved(){try{const x=JSON.parse(localStorage.getItem(SAVE_KEY));return validSave(x)?x:newIsland();}catch{return newIsland();}}
-let state=getSaved(); let scene; let busy=false; let toastTimer; let plantColor='sky';
+let state=getSaved(); let scene; let toastTimer; let plantColor='sky';
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(state));return true;}catch{return false;}}
 function notice(text){const el=$('toast');el.textContent=text;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2400);}
 function commit(result){if(!result.changed){notice(result.reason);return;}state=result.state;const saved=persist();sync();notice(saved?result.reason:result.reason+'（保存できません。ブラウザの設定をご確認ください。）');}
@@ -73,7 +73,7 @@ class IslandScene extends Phaser.Scene {
   else if(state.beacon){const lbl=text(this,207,543,'開拓成功！',21,'#fff2b4');lbl.setDepth(9);}
   this.drawHero();
  }
- collect(n){if(busy)return;const result=interact(state,n.id);if(!result.changed){notice(result.reason);return;}busy=true;const oldx=state.hero.x,oldy=state.hero.y;const x=n.x,y=n.y+35;const cursor=this.add.circle(oldx,oldy,12,0xffffff,.001);this.tweens.add({targets:cursor,x,y,duration:250,ease:'Sine.InOut',onComplete:()=>{cursor.destroy();busy=false;commit(result);sparkle(this,n.x,n.y,0xffe3a2);}});}
+ collect(n){const result=interact(state,n.id);if(!result.changed){notice(result.reason);return;}commit(result);sparkle(this,n.x,n.y,0xffe3a2);}
 }
 new Phaser.Game({type:Phaser.AUTO,width:420,height:570,parent:'game',backgroundColor:'#16394a',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},scene:[IslandScene],render:{antialias:true},input:{activePointers:2}});
 drawUi();
