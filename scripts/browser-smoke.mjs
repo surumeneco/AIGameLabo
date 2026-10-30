@@ -21,7 +21,7 @@ try{
  await page.locator('#game canvas').waitFor();
  const goal=await page.locator('#goal').innerText();if(!goal.includes('木材を3個'))throw Error('First-screen goal missing: '+goal);
  // Tap actual Phaser canvas at the same coordinates used to render the objects.
- async function tap(x,y){const box=await page.locator('#game canvas').boundingBox();if(!box)throw Error('Canvas missing');await page.touchscreen.tap(box.x+box.width*x/420,box.y+box.height*y/570);}
+ async function tap(x,y){const canvas=page.locator('#game canvas');await canvas.scrollIntoViewIfNeeded();const box=await canvas.boundingBox();if(!box)throw Error('Canvas missing');const cx=box.x+box.width*x/420,cy=box.y+box.height*y/570;if(cx<0||cy<0||cx>=393||cy>=844)throw Error(`Canvas tap outside viewport: ${cx},${cy}`);await page.touchscreen.tap(cx,cy);}
  async function assertCounter(id,expected){const v=await page.locator('#'+id).innerText();if(v!==String(expected))throw Error(`${id} expected ${expected}, observed ${v}`);}
  for(const [i,[x,y]] of [[88,212],[202,141],[308,236]].entries()){await tap(x,y);await assertCounter('wood',i+1);}
  await page.getByRole('button',{name:/橋を架ける/}).click();
