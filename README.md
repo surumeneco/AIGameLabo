@@ -1,35 +1,30 @@
-# AIGameLabo — こもれび島の開拓記
+# AIGameLabo
 
-以前の「野の法則」「遺物の迷宮」「機構工房」の試遊で得た問題（操作が分からない／説明の意味が分からない／表示した操作ができない／正解探しで楽しくない）から、**企画を白紙に戻して作成した新しいプロトタイプ**です。
+[灯火の砦 — 最新プロトタイプ](https://surumeneco.github.io/AIGameLabo/) / [こもれび島（旧試作）](https://surumeneco.github.io/AIGameLabo/island.html)
 
-## 30秒で始める
+## 何を遊ぶのか
 
-1. **光っている木を3本タップ**し、木材を集める。
-2. 画面に現れる **「橋を架ける」** を押すと、新しい土地へ行ける。
-3. **花を2輪タップ**し、好きな色の庭を作る。
-4. **光る石を2個タップ**し、灯台を灯す。
+3回の襲撃から灯火を守る短編アクション。地面のタップで移動し、斬撃と盾で敵に対応。各波の後で好きな強化を一つ選び、異なる戦い方を試す。単純な一本道のクラフト操作から、上達と選択による結果の違いへ検証対象を変更。
 
-タップすると主人公が動き、持ち物が増え、景色が変化します。移動ボタンはありません。失敗・時間制限もありません。操作に迷った場合は右上の「遊び方」を開いてください。
+- `src/games/beacon.js`: 決定論的な戦闘ルール
+- `src/beacon-main.js`: Phaser 3の画面と入力
+- `tests/beacon.test.mjs`: 進行・選択・勝敗・シード回帰テスト
+- `scripts/beacon-smoke.mjs`: Chromiumによる実画面操作
+- `island.html`: 前回の「こもれび島の開拓記」。以前の試作の検証結果を維持
+- `docs/BEACON-CONCEPT.md`: 遊びの動機を中心にした企画と反証基準
 
-## 開発と検証
+## ローカル実行
 
-```bash
+```sh
 npm install
-npm run dev
 npm test
+npm run dev
 npm run build
-npx playwright install chromium
 npm run test:browser
 ```
 
-テストは純粋な状態遷移のユニットテストと、Phaserの**実際のcanvasをタップする**ブラウザスモークテストを分けて実施します。GitHub Actionsでも両者を走らせる構成です。
+このプロジェクトはPhaser 3で静的ビルドし、GitHub Pagesで配信します。サーバー側処理・認証・DBはありません。
 
-## 制約
+## 検証と限界
 
-Phaser 3 / スマートフォン縦画面 / 静的GitHub Pages / LocalStorage。ゲーム性そのものが面白いかは本人の試遊に委ねる。最初の受入条件は「説明通りに実際に遊べるか」。
-
-詳しい根拠と現在の仮説は [企画書](docs/CONCEPT.md) を参照。旧版ソースはGitの履歴に保存されています。
-
-## GitHub上での試遊
-
-GitHub Pagesの公開元を **GitHub Actions** に設定すると、`main`への反映後に静的サイトがビルド・配信されます。公開設定・URL・ビルドの状態は[Actions](https://github.com/surumeneco/AIGameLabo/actions)と[Pages設定](https://github.com/surumeneco/AIGameLabo/settings/pages)で確認してください。公開成功は実際のデプロイ結果が出るまで未確認です。
+自動テスト・ビルド成功は面白さの証明ではありません。ゲームとしての魅力は試遊者による評価で判断します。CAT-TDDの公式Gate完了とCIを混同しません。
