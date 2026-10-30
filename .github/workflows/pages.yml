@@ -22,10 +22,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Logic tests
         run: npm test
-      - name: Scenario reachability
-        run: npm run validate:scenarios
       - name: Static build
         run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Browser tap-through smoke test
+        run: npm run test:browser
       - name: Upload built site
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
