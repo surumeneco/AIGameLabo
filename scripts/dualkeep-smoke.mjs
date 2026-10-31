@@ -23,6 +23,12 @@ try{
     const b=await canvas.boundingBox();
     await page.touchscreen.tap(b.x+b.width*.5,b.y+b.height*112/360);
     if(await page.locator('#gold').innerText()!=='6 G')throw Error('Tower placement failed');
+    if(width===393){
+      await page.touchscreen.tap(b.x+b.width*.5,b.y+b.height*112/360);
+      await page.getByRole('button',{name:'撤去（全額返金）'}).click();
+      if(await page.locator('#gold').innerText()!=='10 G')throw Error('Full refund failed');
+      await page.touchscreen.tap(b.x+b.width*.5,b.y+b.height*112/360);
+    }
     await page.reload();await page.locator('#arena canvas').waitFor();
     if(await page.locator('#gold').innerText()!=='6 G')throw Error('Save reload failed');
     if(width===393){
