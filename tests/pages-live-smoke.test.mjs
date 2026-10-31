@@ -88,3 +88,9 @@ test('rejects an asset redirect to the wrong path on the same origin', async () 
     /unexpected final URL/
   );
 });
+
+test('accepts successful responses with canonical final URLs', async () => {
+  const fetchImpl = mockFetchWithFinalUrl(fixtures(), url => url);
+  const verified = await checkLivePages({ baseUrl, fetchImpl });
+  assert.equal(verified.length, 9);
+});
