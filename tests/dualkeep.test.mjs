@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {newGame,build,remove,begin,choose,tick,runAutoplay,TOWERS,WAVES,preview} from '../src/games/dualkeep.js';
+import {newGame,build,remove,begin,choose,tick,runAutoplay,TOWERS,WAVES,preview,advanceBattle} from '../src/games/dualkeep.js';
 test('new game offers a preview of both lanes and a budget',()=>{const s=newGame();assert.equal(s.phase,'planning');assert.equal(s.gold,10);assert.deepEqual(new Set(preview(s).map(x=>x.lane)),new Set(['left','right']));});
 test('building requires a free slot and sufficient budget',()=>{const s=newGame();assert.equal(build(s,0,'bolt').ok,true);assert.equal(s.gold,6);assert.equal(build(s,0,'frost').ok,false);assert.equal(build(s,1,'frost').ok,true);assert.equal(s.gold,1);assert.equal(build(s,2,'bolt').ok,false);});
 test('planning permits full-refund repositioning without loss',()=>{const s=newGame();build(s,0,'bolt');assert.equal(remove(s,0).ok,true);assert.equal(s.gold,10);assert.equal(s.towers.length,0);assert.equal(begin(s),false);});
@@ -20,4 +20,28 @@ test('frost towers slow their target and ice upgrades increase the slowdown',()=
   assert.equal(plain.enemies[0].hp,4);
   assert.ok(plain.enemies[0].slow>0);
   assert.ok(upgraded.enemies[0].y<plain.enemies[0].y);
+});
+
+test('frame batching preserves combat progression at low FPS and at 2x speed',()=>{
+  const fast=newGame(42),slow=newGame(42),double=newGame(42);
+  for(const s of [fast,slow,double]){
+    build(s,1,'bolt');build(s,4,'bolt');assert.equal(begin(s),true);
+  }
+  for(let i=0;i<40;i++)tick(fast,.05);
+  for(let i=0;i<8;i++)advanceBattle(slow,.25);
+  for(let i=0;i<4;i++)advanceBattle(double,.25,2);
+  for(const s of [slow,double]){
+    assert.ok(Math.abs(s.elapsed-fast.elapsed)<1e-9);
+    assert.equal(s.spawned,fast.spawned);
+    assert.equal(s.kills,fast.kills);
+    assert.equal(s.core,fast.core);
+    assert.equal(s.enemies.length,fast.enemies.length);
+  }
+});
+test('frame batching ignores invalid elapsed time and caps one overloaded frame',()=>{
+  const s=newGame();build(s,1,'bolt');begin(s);
+  advanceBattle(s,NaN);advanceBattle(s,-1);advanceBattle(s,.25,0);
+  assert.equal(s.elapsed,0);
+  advanceBattle(s,5);
+  assert.ok(s.elapsed>.49&&s.elapsed<.51);
 });
