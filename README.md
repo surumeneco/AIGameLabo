@@ -1,30 +1,30 @@
 # AIGameLabo
 
-[灯火の砦 — 最新プロトタイプ](https://surumeneco.github.io/AIGameLabo/) / [こもれび島（旧試作）](https://surumeneco.github.io/AIGameLabo/island.html)
+ブラウザで遊べる小さなゲームの試作集。現在のトップページはタワーディフェンス『双路の砦』です。
 
-## 何を遊ぶのか
+- [双路の砦](https://surumeneco.github.io/AIGameLabo/) — 左右2本の進軍路、6地点の配置、弓塔・霜塔、3ウェーブの防衛と強化。候補プロトタイプであり、面白さは試遊で検証します。
+- [灯火の砦](https://surumeneco.github.io/AIGameLabo/beacon.html) — 移動・斬撃・盾で灯火を守るアクション試作。
+- [こもれび島](https://surumeneco.github.io/AIGameLabo/island.html) — 島の開拓と収集を行う旧試作。
 
-3回の襲撃から灯火を守る短編アクション。地面のタップで移動し、斬撃と盾で敵に対応。各波の後で好きな強化を一つ選び、異なる戦い方を試す。単純な一本道のクラフト操作から、上達と選択による結果の違いへ検証対象を変更。
-
-- `src/games/beacon.js`: 決定論的な戦闘ルール
-- `src/beacon-main.js`: Phaser 3の画面と入力
-- `tests/beacon.test.mjs`: 進行・選択・勝敗・シード回帰テスト
-- `scripts/beacon-smoke.mjs`: Chromiumによる実画面操作
-- `island.html`: 前回の「こもれび島の開拓記」。以前の試作の検証結果を維持
-- `docs/BEACON-CONCEPT.md`: 遊びの動機を中心にした企画と反証基準
-
-## ローカル実行
+## 開発と検証
 
 ```sh
 npm install
 npm test
-npm run dev
 npm run build
 npm run test:browser
+npm run dev
 ```
 
-このプロジェクトはPhaser 3で静的ビルドし、GitHub Pagesで配信します。サーバー側処理・認証・DBはありません。
+`npm run dev` は `http://127.0.0.1:5173/` で3作品を配信し、JS変更を監視します。HTML/CSSを変更した場合は開発サーバーを再起動してコピーを更新してください。
 
-## 検証と限界
+`scripts/build.mjs` は `dist/app.js`（双路の砦）、`dist/beacon.js`（灯火の砦）、`dist/island.js`（こもれび島）をそれぞれ生成し、各HTML/CSSを同梱します。GitHub Pagesは `main` への反映後にこの `dist/` を公開します。
 
-自動テスト・ビルド成功は面白さの証明ではありません。ゲームとしての魅力は試遊者による評価で判断します。CAT-TDDの公式Gate完了とCIを混同しません。
+- `src/games/dualkeep.js` / `tests/dualkeep.test.mjs`: 決定論的なタワーディフェンスルールと回帰試験
+- `src/dualkeep-main.js` / `scripts/dualkeep-smoke.mjs`: Phaser表示、タッチ配置、進捗保存、モバイル操作検証
+- `scripts/beacon-smoke.mjs` / `scripts/browser-smoke.mjs`: 旧2作品のブラウザ回帰試験
+- `docs/DUALKEEP-CONCEPT.md`: 企画仮説と受入条件
+
+## 検証の限界
+
+ロジックテスト、Playwright、CI、ビルドの成功は、ゲームの面白さ・難易度・実機の全環境での動作を保証しません。CAT-TDDの正式GateはCIとは別に確認します。
