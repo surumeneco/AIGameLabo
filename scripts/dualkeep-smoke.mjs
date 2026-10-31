@@ -45,6 +45,21 @@ try{
       await page.locator('#reward').waitFor({state:'visible',timeout:70000});
       await page.locator('#reward-options button').first().click();
       if(await page.locator('#wave').innerText()!=='2 / 3')throw Error('Upgrade transition failed');
+      await live.scrollIntoViewIfNeeded();
+      const nextArea=await live.boundingBox();
+      await page.touchscreen.tap(nextArea.x+nextArea.width*50/360,nextArea.y+nextArea.height*112/360);
+      await page.getByRole('button',{name:'防衛を開始'}).click();
+      await page.getByRole('button',{name:'速度 1×'}).click();
+      await page.locator('#reward').waitFor({state:'visible',timeout:70000});
+      await page.locator('#reward-options button').first().click();
+      if(await page.locator('#wave').innerText()!=='3 / 3')throw Error('Third wave not unlocked');
+      await live.scrollIntoViewIfNeeded();
+      const finalArea=await live.boundingBox();
+      await page.touchscreen.tap(finalArea.x+finalArea.width*50/360,finalArea.y+finalArea.height*245/360);
+      await page.getByRole('button',{name:'防衛を開始'}).click();
+      await page.getByRole('button',{name:'速度 1×'}).click();
+      await page.getByText('勝利',{exact:true}).waitFor({timeout:70000});
+      if(await page.locator('#phase').innerText()!=='勝利')throw Error('Three-wave victory missing');
     }
     page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'最初から'}).click();
     if(await page.locator('#gold').innerText()!=='10 G')throw Error('Retry failed');
