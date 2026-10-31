@@ -104,7 +104,7 @@ test('rejects JavaScript MIME lookalikes rather than substring matches', async (
   });
   await assert.rejects(
     checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }),
-    /app\\.js: expected javascript/
+    /app\.js: expected javascript/
   );
 });
 
@@ -116,7 +116,7 @@ test('rejects CSS MIME lookalikes rather than substring matches', async () => {
   });
   await assert.rejects(
     checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }),
-    /styles\\.css: expected text\\/css/
+    /styles\.css: expected text\/css/
   );
 });
 
