@@ -57,3 +57,34 @@ test('rejects invalid base URLs before any network request', async () => {
   await assert.rejects(checkLivePages({ baseUrl: 'http://example.github.io/AIGameLabo/', fetchImpl: mockFetch(fixtures()) }), /HTTPS directory/);
   await assert.rejects(checkLivePages({ baseUrl: 'https://example.github.io/AIGameLabo', fetchImpl: mockFetch(fixtures()) }), /HTTPS directory/);
 });
+
+function mockFetchWithFinalUrl(data, redirect) {
+  return async url => {
+    const entry = data.get(url);
+    const response = entry
+      ? new Response(entry.body, { status: 200, headers: { 'content-type': entry.type } })
+      : new Response('Not Found', { status: 404, headers: { 'content-type': 'text/html' } });
+    Object.defineProperty(response, 'url', { value: redirect(url) });
+    return response;
+  };
+}
+
+test('rejects a cross-origin redirect even when the response looks valid', async () => {
+  const fetchImpl = mockFetchWithFinalUrl(fixtures(), url =>
+    url === baseUrl ? 'https://other.example/AIGameLabo/' : url
+  );
+  await assert.rejects(
+    checkLivePages({ baseUrl, fetchImpl }),
+    /unexpected final URL/
+  );
+});
+
+test('rejects an asset redirect to the wrong path on the same origin', async () => {
+  const fetchImpl = mockFetchWithFinalUrl(fixtures(), url =>
+    url === `${baseUrl}app.js` ? `${baseUrl}island.js` : url
+  );
+  await assert.rejects(
+    checkLivePages({ baseUrl, fetchImpl }),
+    /unexpected final URL/
+  );
+});
