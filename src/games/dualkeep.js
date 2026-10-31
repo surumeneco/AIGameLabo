@@ -13,6 +13,33 @@ export const REWARDS={power:{name:'鋭い矢',detail:'弓塔のダメージ +1'}
 const intervals=[1.95,1.7,1.4];
 const rand=s=>{s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;};
 export function newGame(seed=42){return {seed:(seed>>>0)||42,phase:'planning',wave:0,gold:10,core:8,towers:[],enemies:[],spawned:0,clock:0,elapsed:0,kills:0,leaks:0,upgrades:[],choices:[],nextId:1,events:[],lastResult:'次の襲撃を確認し、塔を配置しよう。'};}
+
+const PHASES=new Set(['planning','battle','reward','won','lost']);
+// Reject partial or inconsistent local snapshots instead of restoring a stuck run.
+export function isValidSave(s){
+  if(!s||typeof s!=='object'||Array.isArray(s)||!PHASES.has(s.phase))return false;
+  if(!Number.isInteger(s.wave)||s.wave<0||s.wave>=WAVES.length)return false;
+  if(!Number.isInteger(s.gold)||s.gold<0||s.gold>100||!Number.isInteger(s.core)||s.core<0||s.core>8)return false;
+  if(!Number.isInteger(s.seed)||s.seed<0||s.seed>0xffffffff)return false;
+  if(!Number.isFinite(s.clock)||s.clock<0||!Number.isFinite(s.elapsed)||s.elapsed<0)return false;
+  if(!Number.isInteger(s.spawned)||s.spawned<0||s.spawned>WAVES[s.wave].length)return false;
+  if(!Number.isInteger(s.nextId)||s.nextId<1||!Number.isInteger(s.kills)||s.kills<0||!Number.isInteger(s.leaks)||s.leaks<0)return false;
+  if(!Array.isArray(s.towers)||!Array.isArray(s.enemies)||!Array.isArray(s.upgrades)||!Array.isArray(s.choices)||!Array.isArray(s.events)||typeof s.lastResult!=='string')return false;
+  if(s.towers.length>PADS.length||s.enemies.length>WAVES[s.wave].length)return false;
+  if(new Set(s.towers.map(t=>t.slot)).size!==s.towers.length)return false;
+  if(!s.towers.every(t=>Number.isInteger(t.slot)&&t.slot>=0&&t.slot<PADS.length&&Object.hasOwn(TOWERS,t.kind)&&Number.isFinite(t.cd)&&t.cd>=0))return false;
+  if(new Set(s.enemies.map(e=>e.id)).size!==s.enemies.length)return false;
+  if(!s.enemies.every(e=>Number.isInteger(e.id)&&e.id>=1&&e.id<s.nextId&&Object.hasOwn(ENEMIES,e.kind)&&Object.hasOwn(LANES,e.lane)&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&e.y>=0&&e.y<330&&Number.isFinite(e.hp)&&e.hp>0&&e.hp<=ENEMIES[e.kind].hp&&Number.isFinite(e.slow)&&e.slow>=0&&e.slow<=2.2))return false;
+  if(s.upgrades.length>2||new Set(s.upgrades).size!==s.upgrades.length||new Set(s.choices).size!==s.choices.length)return false;
+  if(!s.upgrades.every(id=>Object.hasOwn(REWARDS,id))||!s.choices.every(id=>Object.hasOwn(REWARDS,id)&&!s.upgrades.includes(id)))return false;
+  if(s.phase==='reward'&&(s.wave===WAVES.length-1||s.choices.length<1||s.choices.length>2))return false;
+  if(s.phase!=='reward'&&s.choices.length!==0)return false;
+  if(s.phase==='won'&&s.wave!==WAVES.length-1)return false;
+  if((s.phase==='lost')!==(s.core===0))return false;
+  if(s.phase==='battle'&&!s.towers.length)return false;
+  return true;
+}
+
 export function preview(s){return WAVES[s.wave].map((x,i)=>({...x,order:i+1,hp:ENEMIES[x.kind].hp}));}
 export function build(s,slot,kind){if(s.phase!=='planning')return {ok:false,reason:'準備中だけ建設できます。'};if(!Number.isInteger(slot)||!PADS[slot]||!TOWERS[kind])return {ok:false,reason:'建設場所・塔を選び直してください。'};if(s.towers.some(t=>t.slot===slot))return {ok:false,reason:'この場所には既に塔があります。撤去すると費用が戻ります。'};if(s.gold<TOWERS[kind].cost)return {ok:false,reason:`資金不足：${TOWERS[kind].name}は${TOWERS[kind].cost}必要です。`};s.gold-=TOWERS[kind].cost;s.towers.push({slot,kind,cd:0});return {ok:true,reason:`${TOWERS[kind].name}を建設した。`};}
 export function remove(s,slot){if(s.phase!=='planning')return {ok:false,reason:'準備中だけ変更できます。'};const index=s.towers.findIndex(t=>t.slot===slot);if(index<0)return {ok:false,reason:'この場所は空いています。'};const [t]=s.towers.splice(index,1);s.gold+=TOWERS[t.kind].cost;return {ok:true,reason:`${TOWERS[t.kind].name}を撤去し、全額返金した。`};}
