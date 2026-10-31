@@ -9,7 +9,7 @@ try{
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:393,height:844},hasTouch:true,isMobile:true,deviceScaleFactor:1});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(`http://127.0.0.1:${server.address().port}/`,{waitUntil:'networkidle'});
+ await page.goto(`http://127.0.0.1:${server.address().port}/beacon.html`,{waitUntil:'networkidle'});
  await page.locator('#arena canvas').waitFor();
  if(!(await page.locator('#objective').innerText()).includes('灯火'))throw Error('First objective is missing');
  await page.getByRole('button',{name:'遊び方'}).click();if(!await page.locator('#instructions').isVisible())throw Error('Help unavailable');
