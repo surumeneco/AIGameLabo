@@ -94,3 +94,39 @@ test('accepts successful responses with canonical final URLs', async () => {
   const verified = await checkLivePages({ baseUrl, fetchImpl });
   assert.equal(verified.length, 9);
 });
+
+
+test('rejects JavaScript MIME lookalikes rather than substring matches', async () => {
+  const data = fixtures();
+  data.set(`${baseUrl}app.js`, {
+    type: 'application/notjavascript',
+    body: 'console.log("a sufficiently long JavaScript asset");',
+  });
+  await assert.rejects(
+    checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }),
+    /app\\.js: expected javascript/
+  );
+});
+
+test('rejects CSS MIME lookalikes rather than substring matches', async () => {
+  const data = fixtures();
+  data.set(`${baseUrl}styles.css`, {
+    type: 'text/css-bogus',
+    body: '.app { display: grid; min-height: 100vh; }',
+  });
+  await assert.rejects(
+    checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }),
+    /styles\\.css: expected text\\/css/
+  );
+});
+
+test('accepts exact media types with case-insensitive parameters', async () => {
+  const data = fixtures();
+  const html = data.get(baseUrl);
+  data.set(baseUrl, { ...html, type: 'TEXT/HTML; charset=UTF-8' });
+  const js = data.get(`${baseUrl}app.js`);
+  data.set(`${baseUrl}app.js`, { ...js, type: 'text/javascript; charset=utf-8' });
+  const css = data.get(`${baseUrl}styles.css`);
+  data.set(`${baseUrl}styles.css`, { ...css, type: 'text/css; charset=utf-8' });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
