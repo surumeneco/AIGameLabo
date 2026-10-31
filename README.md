@@ -1,6 +1,6 @@
 # AIGameLabo
 
-ブラウザで遊べる小さなゲームの試作集。このfeatureブランチではトップページをタワーディフェンス『双路の砦』に変更しています。mainへのマージ・Pages反映前は公開URLに旧作が表示されます。
+ブラウザで遊べる小さなゲームの試作集。トップページはタワーディフェンス『双路の砦』です。公開URLの内容は `main` のGitHub Pagesデプロイ結果に従います。
 
 - [双路の砦](https://surumeneco.github.io/AIGameLabo/) — 左右2本の進軍路、6地点の配置、弓塔・霜塔、3ウェーブの防衛と強化。候補プロトタイプであり、面白さは試遊で検証します。
 - [灯火の砦](https://surumeneco.github.io/AIGameLabo/beacon.html) — 移動・斬撃・盾で灯火を守るアクション試作。
