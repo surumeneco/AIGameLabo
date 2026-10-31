@@ -10,3 +10,14 @@ test('failure can be understood and a fresh run resets all resources',()=>{const
 test('reward selection is exclusive and transitions to next planned wave',()=>{const s=newGame();s.phase='reward';s.choices=['power','funds'];assert.equal(choose(s,'ice'),false);assert.equal(choose(s,'funds'),true);assert.equal(s.gold,15);assert.equal(s.wave,1);assert.equal(s.phase,'planning');assert.equal(choose(s,'power'),false);});
 test('tick ignores invalid timing and does not advance while planning',()=>{const s=newGame();tick(s,10);tick(s,-1);assert.equal(s.elapsed,0);});
 test('side-only investment cannot handle all waves, showing location consequence',()=>{const s=runAutoplay(x=>{if(!x.towers.length)build(x,0,'bolt');},9);assert.equal(s.phase,'lost');assert.ok(s.leaks>=8);});
+
+test('frost towers slow their target and ice upgrades increase the slowdown',()=>{
+  const plain=newGame(),upgraded=newGame();
+  for(const s of [plain,upgraded]){build(s,1,'frost');begin(s);}
+  upgraded.upgrades.push('ice');
+  tick(plain,.05);tick(upgraded,.05);
+  assert.equal(plain.enemies.length,1);
+  assert.equal(plain.enemies[0].hp,4);
+  assert.ok(plain.enemies[0].slow>0);
+  assert.ok(upgraded.enemies[0].y<plain.enemies[0].y);
+});
