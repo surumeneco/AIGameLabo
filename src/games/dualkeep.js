@@ -28,4 +28,17 @@ const leaked=s.enemies.filter(e=>e.y>=330);s.enemies=s.enemies.filter(e=>e.y<330
 if(s.core===0){s.phase='lost';s.lastResult='砦が陥落した。次は塔の位置と種類を変えよう。';return;}
 if(s.spawned===wave.length&&s.enemies.length===0){if(s.wave===WAVES.length-1){s.phase='won';s.lastResult='3回の襲撃を退けた。別の配置でも挑戦できる。';}else{s.gold+=5;s.choices=rewardChoices(s);s.phase='reward';s.lastResult='防衛成功。次の一手を選ぼう。';}}
 }
+
+// Advance a low-FPS frame in fixed steps, retaining real-time combat up to a
+// bounded 0.5-second catch-up. Background tabs are paused by the UI instead.
+export function advanceBattle(s,elapsedSeconds,speed=1){
+  if(s.phase!=='battle'||!Number.isFinite(elapsedSeconds)||elapsedSeconds<=0||(speed!==1&&speed!==2))return;
+  let remaining=Math.min(elapsedSeconds,.5)*speed;
+  while(remaining>1e-8&&s.phase==='battle'){
+    const step=Math.min(.05,remaining);
+    tick(s,step);
+    remaining-=step;
+  }
+}
+
 export function runAutoplay(strategy,seed=42){const s=newGame(seed);let loops=0;while(!['won','lost'].includes(s.phase)&&loops<9000){if(s.phase==='planning'){strategy(s);if(!begin(s))break;}else if(s.phase==='reward'){choose(s,s.choices[0]);}else tick(s,.05);loops++;}return s;}
