@@ -38,7 +38,7 @@ test('rejects a missing legacy route', async () => {
 test('rejects a wrong page title even with HTTP 200', async () => {
   const data = fixtures();
   data.set(baseUrl, { type: 'text/html', body: '<title>Wrong game</title>' });
-  await assert.rejects(checkLivePages({ baseUrl, fetchImpl, mockFetch(data) }), /expected page title not found/);
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /expected page title not found/);
 });
 
 test('rejects an HTML fallback served instead of a JavaScript asset', async () => {
