@@ -14,6 +14,9 @@ async function fetchText(fetchImpl, url, expectedType) {
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  if (response.url && new URL(response.url).href !== new URL(url).href) {
+    throw new Error(`${url}: unexpected final URL ${response.url}`);
+  }
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes(expectedType)) {
     throw new Error(`${url}: expected ${expectedType}, got ${contentType || '(missing content-type)'}`);
