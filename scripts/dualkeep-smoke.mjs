@@ -25,6 +25,21 @@ try{
     if(await page.locator('#gold').innerText()!=='6 G')throw Error('Tower placement failed');
     await page.reload();await page.locator('#arena canvas').waitFor();
     if(await page.locator('#gold').innerText()!=='6 G')throw Error('Save reload failed');
+    if(width===393){
+      const live=page.locator('#arena canvas');
+      await live.scrollIntoViewIfNeeded();
+      const area=await live.boundingBox();
+      await page.touchscreen.tap(area.x+area.width*.5,area.y+area.height*245/360);
+      if(await page.locator('#gold').innerText()!=='2 G')throw Error('Second tower failed');
+      await page.getByRole('button',{name:'防衛を開始'}).click();
+      await page.getByRole('button',{name:'一時停止'}).click();
+      if(await page.locator('#phase').innerText()!=='停止')throw Error('Pause failed');
+      await page.getByRole('button',{name:'再開'}).click();
+      await page.getByRole('button',{name:'速度 1×'}).click();
+      await page.locator('#reward').waitFor({state:'visible',timeout:70000});
+      await page.locator('#reward-options button').first().click();
+      if(await page.locator('#wave').innerText()!=='2 / 3')throw Error('Upgrade transition failed');
+    }
     page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'最初から'}).click();
     if(await page.locator('#gold').innerText()!=='10 G')throw Error('Retry failed');
     if(errors.length)throw Error(errors.join(' / '));
