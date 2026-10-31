@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import {SIZE,LANES,PADS,TOWERS,ENEMIES,REWARDS,WAVES,newGame,preview,build,remove,begin,choose,tick} from './games/dualkeep.js';
+import {SIZE,LANES,PADS,TOWERS,ENEMIES,REWARDS,WAVES,newGame,preview,build,remove,begin,choose,advanceBattle} from './games/dualkeep.js';
 
 // This is a fresh, recoverable mobile presentation of the deterministic tower-defense engine.
 // Combat requires no simultaneous taps: the player's decisions occur during preparation.
@@ -116,10 +116,7 @@ class DualKeepScene extends Phaser.Scene{
   }
   update(_clock,delta){
     if(game.phase==='battle'&&!paused&&!document.hidden){
-      let remaining=Math.min(delta/1000,0.1)*speed;
-      while(remaining>1e-6&&game.phase==='battle'){
-        const dt=Math.min(.05,remaining);tick(game,dt);remaining-=dt;
-      }
+      advanceBattle(game,delta/1000,speed);
       if(frame%18===0)save();
     }
     if(frame%6===0)render();
