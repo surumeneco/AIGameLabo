@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {newGame,build,remove,begin,choose,tick,runAutoplay,TOWERS,WAVES,preview,advanceBattle} from '../src/games/dualkeep.js';
+import {newGame,build,remove,begin,choose,tick,runAutoplay,TOWERS,WAVES,preview,advanceBattle,isValidSave} from '../src/games/dualkeep.js';
 test('new game offers a preview of both lanes and a budget',()=>{const s=newGame();assert.equal(s.phase,'planning');assert.equal(s.gold,10);assert.deepEqual(new Set(preview(s).map(x=>x.lane)),new Set(['left','right']));});
 test('building requires a free slot and sufficient budget',()=>{const s=newGame();assert.equal(build(s,0,'bolt').ok,true);assert.equal(s.gold,6);assert.equal(build(s,0,'frost').ok,false);assert.equal(build(s,1,'frost').ok,true);assert.equal(s.gold,1);assert.equal(build(s,2,'bolt').ok,false);});
 test('planning permits full-refund repositioning without loss',()=>{const s=newGame();build(s,0,'bolt');assert.equal(remove(s,0).ok,true);assert.equal(s.gold,10);assert.equal(s.towers.length,0);assert.equal(begin(s),false);});
@@ -44,4 +44,25 @@ test('frame batching ignores invalid elapsed time and caps one overloaded frame'
   assert.equal(s.elapsed,0);
   advanceBattle(s,5);
   assert.ok(s.elapsed>.49&&s.elapsed<.51);
+});
+
+test('save validation accepts live battle and completed run snapshots',()=>{
+  const s=newGame();assert.equal(isValidSave(s),true);
+  build(s,1,'bolt');begin(s);tick(s,.05);
+  assert.equal(isValidSave(JSON.parse(JSON.stringify(s))),true);
+  const won=runAutoplay(x=>{for(const slot of [1,4,0,3,2,5])if(!x.towers.some(t=>t.slot===slot)&&x.gold>=TOWERS.bolt.cost)build(x,slot,'bolt');});
+  assert.equal(won.phase,'won');assert.equal(isValidSave(won),true);
+});
+test('save validation rejects malformed counters, IDs and impossible terminal states',()=>{
+  const s=newGame();build(s,1,'bolt');begin(s);tick(s,.05);
+  for(const patch of [
+    {nextId:undefined},{kills:undefined},{leaks:-1},{seed:-1},
+    {towers:[{slot:1,kind:'bolt',cd:-1}]},
+    {enemies:[{id:999,lane:'left',kind:'scout',x:112,y:14,hp:5,slow:0}]},
+    {phase:'won',wave:0},{phase:'lost',core:8},
+    {phase:'reward',choices:[]},{phase:'planning',choices:['power']}
+  ]){
+    const corrupted={...s,...patch};
+    assert.equal(isValidSave(corrupted),false,JSON.stringify(patch));
+  }
 });
