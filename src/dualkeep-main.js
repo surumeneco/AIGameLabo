@@ -1,27 +1,12 @@
 import Phaser from 'phaser';
-import {SIZE,LANES,PADS,TOWERS,ENEMIES,REWARDS,WAVES,newGame,preview,build,remove,begin,choose,advanceBattle} from './games/dualkeep.js';
+import {SIZE,LANES,PADS,TOWERS,ENEMIES,REWARDS,WAVES,newGame,preview,build,remove,begin,choose,advanceBattle,isValidSave} from './games/dualkeep.js';
 
 // This is a fresh, recoverable mobile presentation of the deterministic tower-defense engine.
 // Combat requires no simultaneous taps: the player's decisions occur during preparation.
 const el=id=>document.getElementById(id);
 const STORE='aigamelabo:dualkeep:save:v2';
 const phaseLabels={planning:'準備',battle:'迎撃',reward:'強化',won:'勝利',lost:'敗北'};
-function validSave(s){
-  if(!s||typeof s!=='object'||!Object.hasOwn(phaseLabels,s.phase))return false;
-  if(!Number.isInteger(s.wave)||s.wave<0||s.wave>=WAVES.length)return false;
-  if(!Number.isInteger(s.gold)||s.gold<0||s.gold>100)return false;
-  if(!Number.isInteger(s.core)||s.core<0||s.core>8)return false;
-  if(!Number.isInteger(s.seed)||!Number.isFinite(s.clock)||!Number.isFinite(s.elapsed))return false;
-  if(!Number.isInteger(s.spawned)||s.spawned<0||s.spawned>WAVES[s.wave].length)return false;
-  if(!Array.isArray(s.towers)||!Array.isArray(s.enemies)||!Array.isArray(s.upgrades)||!Array.isArray(s.choices))return false;
-  if(s.towers.length>PADS.length||s.enemies.length>WAVES[s.wave].length)return false;
-  if(new Set(s.towers.map(t=>t.slot)).size!==s.towers.length)return false;
-  if(!s.towers.every(t=>Number.isInteger(t.slot)&&t.slot>=0&&t.slot<PADS.length&&Object.hasOwn(TOWERS,t.kind)&&Number.isFinite(t.cd)))return false;
-  if(!s.enemies.every(e=>Object.hasOwn(ENEMIES,e.kind)&&Object.hasOwn(LANES,e.lane)&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&Number.isFinite(e.hp)&&Number.isFinite(e.slow)))return false;
-  if(!s.choices.every(c=>Object.hasOwn(REWARDS,c))||!s.upgrades.every(c=>Object.hasOwn(REWARDS,c)))return false;
-  return true;
-}
-function readState(){try{const v=JSON.parse(localStorage.getItem(STORE));if(validSave(v))return v;}catch{}return newGame();}
+function readState(){try{const v=JSON.parse(localStorage.getItem(STORE));if(isValidSave(v))return v;}catch{}return newGame();}
 let game=readState(),chosen='bolt',selectedPad=null,paused=game.phase==='battle',speed=1,frame=0,lastPhase='';
 function save(){try{localStorage.setItem(STORE,JSON.stringify(game));return true;}catch{return false;}}
 function notify(message){el('status').textContent=message;}
