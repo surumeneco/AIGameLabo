@@ -18,7 +18,11 @@ async function fetchText(fetchImpl, url, expectedType) {
     throw new Error(`${url}: unexpected final URL ${response.url}`);
   }
   const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.toLowerCase().includes(expectedType)) {
+  const mediaType = contentType.split(';', 1)[0].trim().toLowerCase();
+  const allowedMediaTypes = expectedType === 'javascript'
+    ? ['text/javascript', 'application/javascript', 'application/x-javascript']
+    : [expectedType];
+  if (!allowedMediaTypes.includes(mediaType)) {
     throw new Error(`${url}: expected ${expectedType}, got ${contentType || '(missing content-type)'}`);
   }
   const body = await response.text();
