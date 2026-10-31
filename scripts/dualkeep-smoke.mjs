@@ -19,6 +19,11 @@ const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const button=name=>page.getByRole('button',{name});
 await page.goto('http://127.0.0.1:'+server.address().port+'/');
 const canvas=page.locator('#arena canvas');await canvas.waitFor();
+if(width===320){
+  await page.evaluate(()=>localStorage.setItem('aigamelabo:dualkeep:save:v2',JSON.stringify({phase:'battle',wave:0,gold:10,core:8})));
+  await page.reload();await canvas.waitFor();
+  if(await page.locator('#phase').innerText()!=='準備')throw Error('Corrupt save was not discarded');
+}
 if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Horizontal overflow');
 await canvas.scrollIntoViewIfNeeded();
 const b=await canvas.boundingBox();
