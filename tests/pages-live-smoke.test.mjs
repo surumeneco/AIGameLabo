@@ -387,3 +387,22 @@ test('accepts a stylesheet with both print and screen media queries', async () =
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+
+test('rejects an alternate stylesheet link as inactive by default', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="alternate stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
+});
+
+test('rejects an alternate stylesheet regardless of rel token order', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet alternate" href="./styles.css"><script src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
+});
