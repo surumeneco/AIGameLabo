@@ -462,3 +462,18 @@ test('accepts case-insensitive screen media tokens with surrounding whitespace',
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+
+test('rejects a nomodule-only script as the active game asset', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script nomodule src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('accepts a classic script without nomodule', async () => {
+  const result = await checkLivePages({ baseUrl, fetchImpl: mockFetch(fixtures()) });
+  assert.equal(result.length, 9);
+});
