@@ -166,3 +166,21 @@ test('accepts valid asset tags with single quotes and reordered attributes', asy
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('rejects a page title that exists only in an HTML comment', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<!-- <title>双路の砦 | AIGameLabo</title> --><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /expected page title not found/);
+});
+
+test('accepts an active title element with attributes and whitespace', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title data-check="ok">  双路の砦 | AIGameLabo  </title><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
