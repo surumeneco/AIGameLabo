@@ -15,7 +15,9 @@ function stripHtmlComments(html) {
 function stripInertContainers(html) {
   let cleaned = stripHtmlComments(html);
   for (const name of ['template', 'noscript']) {
-    const pattern = new RegExp(String.raw\`<\\/?\${name}\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>\`, 'gi');
+    const pattern = name === 'template'
+      ? /<\/?template\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi
+      : /<\/?noscript\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi;
     const spans = [];
     let depth = 0;
     let start = 0;
