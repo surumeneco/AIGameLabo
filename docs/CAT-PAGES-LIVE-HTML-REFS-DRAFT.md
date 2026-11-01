@@ -51,3 +51,14 @@ titleはHTML内の任意の文字列一致ではなく、コメント外の有�
 | HTML-COMMENT-03 | 正しく閉じたコメントの後に有効なtitle/script/linkが存在 | 受理 |
 
 HTMLコメントの除去は `-->` がない場合にも文末までをコメントとして扱う。閉じられたコメントの後の有効な要素は除去しない。検証器の対象は公開HTTPのHTML構造確認であり、ブラウザでのJS実行や正式CAT Gateを代替しない。
+
+## 追加のscript type境界（同一Work、2026-11-01）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-SCRIPT-TYPE-01 | `<script type="application/json" src="./app.js">` だけが存在 | JavaScript実行資産として拒否 |
+| HTML-SCRIPT-TYPE-02 | `<script type="importmap" src="./app.js">` だけが存在 | JavaScript実行資産として拒否 |
+| HTML-SCRIPT-TYPE-03 | `<script type="module" src="./app.js">` | 受理 |
+| HTML-SCRIPT-TYPE-04 | type省略の従来scriptタグ | 受理 |
+
+HTMLのscript要素にsrcが存在しても、typeが非実行データブロックやimport mapならゲームJSの読み込み証拠ではない。許容するJavaScript MIME essenceとmoduleのみを実行用scriptとして扱う。形式的CAT機械Gateは未実行であり、本DraftはConfirmedではない。
