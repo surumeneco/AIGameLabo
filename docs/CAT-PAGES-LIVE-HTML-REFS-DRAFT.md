@@ -117,3 +117,15 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-STYLESHEET-ALTERNATE-03 | \`rel="stylesheet"\` のlink | 受理 |
 
 代替スタイルシートは通常の初期画面で適用されるCSSの証拠として数えない。HTMLの全ての動的なスタイル切替を解析するものではなく、公開初期表示の有効CSS参照に限定する。正式CAT機械Gateはnot-run、Draftのまま。
+
+
+## 明白に画面非適用のmedia条件（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-STYLESHEET-NOT-01 | \`media="not screen"\` | 画面では適用されないため拒否 |
+| HTML-STYLESHEET-NOT-02 | \`media="not all"\` | いずれの媒体にも適用されないため拒否 |
+| HTML-STYLESHEET-NOT-03 | \`media="not print"\` | 画面には適用可能なので受理 |
+| HTML-STYLESHEET-NOT-04 | \`media="print, not screen"\` | 全クエリが画面非適用なので拒否 |
+
+媒体タイプに関する明白な否定条件のみ判定し、ビューポート・色深度等の複合条件の完全評価は行わない。複数のクエリはOR条件とする。正式CAT機械Gateはnot-run、Draftのまま。
