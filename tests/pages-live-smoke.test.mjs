@@ -211,3 +211,30 @@ test('accepts a real script src after a greater-than sign inside a quoted attrib
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('rejects a title that appears only after an unterminated HTML comment opener', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<!-- <title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>`,
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /expected page title not found/);
+});
+
+test('rejects asset tags that appear only inside an unterminated HTML comment', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<title>双路の砦 | AIGameLabo</title><!-- <link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>`,
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('accepts active asset tags following a properly closed HTML comment', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<!-- <title>wrong</title> --><title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>`,
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
