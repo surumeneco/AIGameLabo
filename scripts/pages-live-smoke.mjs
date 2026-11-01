@@ -75,7 +75,7 @@ function hasActivePageTitle(html, title) {
 }
 
 function assertExpectedDocumentBase(html, pageUrl, assets) {
-  const baseTags = stripHtmlComments(html).match(/<base\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi) ?? [];
+  const baseTags = stripHtmlComments(html).match(/<base\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi) ?? [];
   const href = baseTags.map(tag => getTagAttribute(tag, 'href')).find(value => value !== null);
   if (href === undefined) return;
   try {
