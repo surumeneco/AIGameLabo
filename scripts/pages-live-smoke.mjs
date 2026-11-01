@@ -105,7 +105,11 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
 }
 
 function hasActivePageTitle(html, title) {
-  const withoutComments = stripInertContainers(html);
+  // Raw-text/RCDATA contents are not HTML title elements.
+  const withoutComments = stripInertContainers(html).replace(
+    /<(script|style|textarea)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>[\s\S]*?(?:<\/\1\s*>|$)/gi,
+    '',
+  );
   const match = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title\s*>/i.exec(withoutComments);
   return match?.[1].replace(/\s+/g, ' ').trim() === `${title} | AIGameLabo`;
 }
