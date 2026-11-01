@@ -498,3 +498,40 @@ test('accepts a real page title following a raw-text element', async () => {
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+
+test('rejects a stylesheet tag appearing only inside script text', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><script src="./app.js"></script><script>const fake = \'<link rel="stylesheet" href="./styles.css">\';</script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
+});
+
+test('rejects a script tag appearing only inside style text', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><style>p::before { content: \'<script src="./app.js"></script>\'; }</style>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('rejects asset tags appearing only inside textarea text', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><textarea><script src="./app.js"></script><link rel="stylesheet" href="./styles.css"></textarea>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('accepts real asset tags alongside raw-text decoys', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><script>const fake = \'<link rel="stylesheet" href="./wrong.css">\';</script><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
