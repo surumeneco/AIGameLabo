@@ -443,3 +443,22 @@ test('rejects a list whose every media query excludes screen', async () => {
   });
   await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
 });
+
+
+test('treats disabled=false as a present HTML boolean attribute', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" disabled="false" href="./styles.css"><script src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
+});
+
+test('accepts case-insensitive screen media tokens with surrounding whitespace', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" media="  SCREEN  " href="./styles.css"><script src="./app.js"></script>',
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
