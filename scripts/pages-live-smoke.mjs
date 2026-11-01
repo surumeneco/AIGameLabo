@@ -88,6 +88,8 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
     }
     if (tagName === 'script') {
       const type = getTagAttribute(tag, 'type');
+      // Classic nomodule scripts are not executed in module-capable browsers.
+      if (getTagAttribute(tag, 'nomodule') !== null && type?.trim().toLowerCase() !== 'module') return false;
       if (type !== null) {
         const essence = type.split(';', 1)[0].trim().toLowerCase();
         const executableTypes = [
