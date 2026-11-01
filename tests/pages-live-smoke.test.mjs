@@ -184,3 +184,30 @@ test('accepts an active title element with attributes and whitespace', async () 
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('does not interpret a quoted data attribute as the script src attribute', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script data-note="hint src='./app.js'"></script>`,
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src="\\.\\/app\\.js"/);
+});
+
+test('does not interpret a quoted data attribute as the stylesheet href attribute', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" data-note="hint href='./styles.css'"><script src="./app.js"></script>`,
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href="\\.\\/styles\\.css"/);
+});
+
+test('accepts a real script src after a greater-than sign inside a quoted attribute', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: `<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script data-note="x > y" src="./app.js"></script>`,
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
