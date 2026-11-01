@@ -95,3 +95,14 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-STYLESHEET-ACTIVE-03 | `media="screen"` または `media="all"` の有効link | 受理 |
 
 検証対象は画面表示を行う3作品である。HTML上にCSSのhrefが存在するだけでなく、画面で適用される有効なstylesheet linkを確認する。一般的な複合media queryの完全評価はこの限定HTTPチェッカーの対象外とし、明白なprint-only/disabledをfail-closedにする。既存のtitle、script、HTTP/MIME、URLの検証は維持する。正式CAT機械Gateは未実行でDraftのまま。
+
+
+## 印刷専用メディアクエリの境界（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-STYLESHEET-MEDIA-01 | \`media="only print"\` のlinkのみ | 画面用CSSとして拒否 |
+| HTML-STYLESHEET-MEDIA-02 | \`media="print and (color)"\` のlinkのみ | 画面用CSSとして拒否 |
+| HTML-STYLESHEET-MEDIA-03 | \`media="print, screen"\` のlink | 画面用CSSとして受理 |
+
+コンマ区切りのうち画面へ適用可能なクエリが少なくとも一つあれば、CSS参照を有効とみなす。一般的なメディア特性・論理式の完全評価は行わず、明白な印刷専用条件を拒否する限定検査とする。正式CAT機械Gateはnot-run、Draftのまま維持する。
