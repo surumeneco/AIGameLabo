@@ -74,6 +74,20 @@ function hasActivePageTitle(html, title) {
   return match?.[1].replace(/\s+/g, ' ').trim() === `${title} | AIGameLabo`;
 }
 
+function assertExpectedDocumentBase(html, pageUrl, assets) {
+  const baseTags = stripHtmlComments(html).match(/<base\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi) ?? [];
+  const href = baseTags.map(tag => getTagAttribute(tag, 'href')).find(value => value !== null);
+  if (href === undefined) return;
+  try {
+    const base = new URL(href, pageUrl);
+    if (assets.some(asset => new URL(asset, base).href !== new URL(asset, pageUrl).href)) {
+      throw new Error('asset location changed');
+    }
+  } catch {
+    throw new Error(`${pageUrl}: unexpected document base ${href}`);
+  }
+}
+
 async function fetchText(fetchImpl, url, expectedType) {
   const response = await fetchImpl(url, {
     redirect: 'follow',
@@ -112,6 +126,7 @@ export async function checkLivePages({
     if (!hasActivePageTitle(html, page.title)) {
       throw new Error(`${url.href}: expected page title not found`);
     }
+    assertExpectedDocumentBase(html, url.href, [page.script, page.stylesheet]);
     for (const [attribute, asset, expectedType] of [
       ['src', page.script, 'javascript'],
       ['href', page.stylesheet, 'text/css'],
