@@ -36,6 +36,6 @@ node --test tests/pages-live-smoke.test.mjs
 node scripts/pages-live-smoke.mjs
 ```
 
-後者は **公開済みの `main` のPagesサイト**をHTTPSで取得し、3作品のHTMLタイトル・参照先と、JS/CSS計6資産のHTTPステータス・MIME type・最終URLを検証します。PRのfeatureブランチ自体をデプロイするものではありません。
+後者は **公開済みの `main` のPagesサイト**をHTTPSで取得し、3作品のHTMLタイトル・有効な`script`/`link`参照と、JS/CSS計6資産のHTTPステータス・MIME type・最終URLを検証します。HTMLコメント（未終端を含む）や別属性の引用符内に現れる偽の参照は受理せず、引用符内の`>`でタグを誤分割しません。PRのfeatureブランチ自体をデプロイするものではありません。
 
 `.github/workflows/pages-live-http.yml` はPRと手動実行に加え、`main` の「Test and deploy prototypes」が成功した後にも検証します。CIの成功はゲーム操作・主観的な面白さ・正式CAT-TDD Gateの合格を保証しません。
