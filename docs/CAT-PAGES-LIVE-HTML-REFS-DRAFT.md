@@ -139,3 +139,14 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-SCRIPT-NOMODULE-03 | `<script type="module" src="./app.js">` | 受理 |
 
 検証対象のモダンブラウザでは `nomodule` が付いた従来型スクリプトは実行されない。属性値の有無ではなく属性の存在を検出する。既存のmoduleと通常scriptを維持し、ブラウザ実機検証・正式CAT機械Gateと区別する。Draftのまま維持。
+
+## title文字列を含むraw-text/RCDATA要素（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-TITLE-RAWTEXT-01 | script要素内の文字列にのみ正しいtitleタグが存在 | ページタイトルとして拒否 |
+| HTML-TITLE-RAWTEXT-02 | style要素内の文字列にのみ正しいtitleタグが存在 | ページタイトルとして拒否 |
+| HTML-TITLE-RAWTEXT-03 | textarea要素内の文字列にのみ正しいtitleタグが存在 | ページタイトルとして拒否 |
+| HTML-TITLE-RAWTEXT-04 | 上記要素の後に有効なtitle要素が存在 | 受理 |
+
+HTMLのscript/styleはraw-text、textareaはRCDATAとして扱われ、内部の `<title>` 文字列はHTMLのtitle要素にならない。タイトル検証時のみこれらの要素を除外し、資産参照のscriptタグ自体の検査は維持する。正式CAT機械Gateはnot-run、Draftのまま。
