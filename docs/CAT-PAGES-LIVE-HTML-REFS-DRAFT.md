@@ -22,3 +22,12 @@ HTTP 200・MIME・titleが一致しても、HTMLコメントや別要素の属�
 ## 検証境界
 
 このDraftは正式Confirmedではない。単体テストのRed/GreenとPR CIは実測して記録するが、CAT正規process-closure、TestModel、vectors、Queue、implementation-conformanceを通過したと扱わない。ブラウザ実行と人間の面白さ評価も別工程。
+
+## 追加のHTMLタイトル境界（同一Work）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-TITLE-01 | 正しいtitle文字列がコメント内にのみ存在 | 拒否 |
+| HTML-TITLE-02 | 有効なtitleタグの前後に空白・属性がある | 受理 |
+
+titleはHTML内の任意の文字列一致ではなく、コメント外の有効なtitle要素の内容として検証する。空白の正規化を許すが、別作品名は受理しない。
