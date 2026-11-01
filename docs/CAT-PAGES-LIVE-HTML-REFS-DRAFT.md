@@ -73,3 +73,15 @@ HTMLのscript要素にsrcが存在しても、typeが非実行データブロッ
 | HTML-BASE-04 | base要素なしの既存3ページ | 受理 |
 
 HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テキスト上の `./app.js` が一致していても、ブラウザの解決先が公開ページと異なる場合はゲーム資産が一致したと判定しない。HTTP検証は期待する公開ディレクトリ以外への資産参照をfail-closedで拒否する。CAT正式機械Gateはnot-run、Draftのまま維持。
+
+## 追加の不活性HTMLコンテナ境界（同一Work、2026-11-01）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-INERT-01 | `<template>` 内にのみscript/link参照 | 実行・適用されないため拒否 |
+| HTML-INERT-02 | `<noscript>` 内にのみscript/link参照（通常のJS有効ページ） | ゲーム資産として拒否 |
+| HTML-INERT-03 | ネストしたtemplateの内側にのみ参照 | 拒否 |
+| HTML-INERT-04 | 閉じたtemplateの後に実際のscript/link参照 | 受理 |
+| HTML-INERT-05 | 未終端templateの後続に参照 | 拒否 |
+
+公開HTTP検証ではJS有効の通常ブラウザを対象とする。template内容はDOMへ挿入されるまで不活性、noscriptのフォールバック内容はJS有効時に実行用資産参照としない。HTMLの限定的な字句検証であり、完全なブラウザDOM解析や実際のJS実行の代替ではない。正式CAT機械Gateはnot-run。
