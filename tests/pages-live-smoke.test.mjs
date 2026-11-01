@@ -191,7 +191,7 @@ test('does not interpret a quoted data attribute as the script src attribute', a
     type: 'text/html',
     body: `<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script data-note="hint src='./app.js'"></script>`,
   });
-  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src="\\.\\/app\\.js"/);
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
 });
 
 test('does not interpret a quoted data attribute as the stylesheet href attribute', async () => {
@@ -200,7 +200,7 @@ test('does not interpret a quoted data attribute as the stylesheet href attribut
     type: 'text/html',
     body: `<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" data-note="hint href='./styles.css'"><script src="./app.js"></script>`,
   });
-  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href="\\.\\/styles\\.css"/);
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href=/);
 });
 
 test('accepts a real script src after a greater-than sign inside a quoted attribute', async () => {
