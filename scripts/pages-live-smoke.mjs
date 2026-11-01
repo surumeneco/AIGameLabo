@@ -26,6 +26,12 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
   });
 }
 
+function hasActivePageTitle(html, title) {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const match = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title\s*>/i.exec(withoutComments);
+  return match?.[1].replace(/\s+/g, ' ').trim() === `${title} | AIGameLabo`;
+}
+
 async function fetchText(fetchImpl, url, expectedType) {
   const response = await fetchImpl(url, {
     redirect: 'follow',
@@ -61,7 +67,7 @@ export async function checkLivePages({
   for (const page of PAGES) {
     const url = new URL(page.path, root);
     const html = await fetchText(fetchImpl, url.href, 'text/html');
-    if (!html.includes(`<title>${page.title} | AIGameLabo</title>`)) {
+    if (!hasActivePageTitle(html, page.title)) {
       throw new Error(`${url.href}: expected page title not found`);
     }
     for (const [attribute, asset, expectedType] of [
