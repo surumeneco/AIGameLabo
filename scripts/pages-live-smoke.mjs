@@ -80,9 +80,11 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
       if (!relTokens.includes('stylesheet') || relTokens.includes('alternate')) return false;
       if (getTagAttribute(tag, 'disabled') !== null) return false;
       const media = getTagAttribute(tag, 'media')?.trim().toLowerCase();
-      if (media && media.split(',').every(query =>
-        /^(?:only\s+)?print(?:\s+and(?:\s|\()|$)/.test(query.trim())
-      )) return false;
+      if (media && media.split(',').every(query => {
+        const normalized = query.trim();
+        return /^(?:only\s+)?print(?:\s+and(?:\s|\()|$)/.test(normalized)
+          || /^not\s+(?:screen|all)(?:\s+and(?:\s|\()|$)/.test(normalized);
+      })) return false;
     }
     if (tagName === 'script') {
       const type = getTagAttribute(tag, 'type');
