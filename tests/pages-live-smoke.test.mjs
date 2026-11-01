@@ -130,3 +130,39 @@ test('accepts exact media types with case-insensitive parameters', async () => {
   data.set(`${baseUrl}styles.css`, { ...css, type: 'text/css; charset=utf-8' });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('rejects asset references that exist only inside an HTML comment', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><!-- <link rel="stylesheet" href="./styles.css"><script src="./app.js"></script> -->',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src="\.\/app\.js"/);
+});
+
+test('rejects asset attributes on unrelated HTML elements', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><div src="./app.js" href="./styles.css"></div>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src="\.\/app\.js"/);
+});
+
+test('does not treat a preload link as an active stylesheet', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="preload" href="./styles.css"><script src="./app.js"></script>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing href="\.\/styles\.css"/);
+});
+
+test('accepts valid asset tags with single quotes and reordered attributes', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: "<title>双路の砦 | AIGameLabo</title><link href='./styles.css' media='screen' rel='stylesheet'><script defer src='./app.js'></script>",
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
