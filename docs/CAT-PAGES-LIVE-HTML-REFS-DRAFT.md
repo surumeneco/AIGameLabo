@@ -106,3 +106,14 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-STYLESHEET-MEDIA-03 | \`media="print, screen"\` のlink | 画面用CSSとして受理 |
 
 コンマ区切りのうち画面へ適用可能なクエリが少なくとも一つあれば、CSS参照を有効とみなす。一般的なメディア特性・論理式の完全評価は行わず、明白な印刷専用条件を拒否する限定検査とする。正式CAT機械Gateはnot-run、Draftのまま維持する。
+
+
+## 代替スタイルシートの境界（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-STYLESHEET-ALTERNATE-01 | \`rel="alternate stylesheet"\` のlinkのみ | 初期画面の有効CSSとして拒否 |
+| HTML-STYLESHEET-ALTERNATE-02 | \`rel="stylesheet alternate"\` のlinkのみ | トークン順に依存せず拒否 |
+| HTML-STYLESHEET-ALTERNATE-03 | \`rel="stylesheet"\` のlink | 受理 |
+
+代替スタイルシートは通常の初期画面で適用されるCSSの証拠として数えない。HTMLの全ての動的なスタイル切替を解析するものではなく、公開初期表示の有効CSS参照に限定する。正式CAT機械Gateはnot-run、Draftのまま。
