@@ -129,3 +129,13 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-STYLESHEET-NOT-04 | \`media="print, not screen"\` | 全クエリが画面非適用なので拒否 |
 
 媒体タイプに関する明白な否定条件のみ判定し、ビューポート・色深度等の複合条件の完全評価は行わない。複数のクエリはOR条件とする。正式CAT機械Gateはnot-run、Draftのまま。
+
+## モダンブラウザで実行されないnomoduleスクリプト（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-SCRIPT-NOMODULE-01 | `<script nomodule src="./app.js">` のみ | 現行ブラウザで実行されないため拒否 |
+| HTML-SCRIPT-NOMODULE-02 | `<script src="./app.js">` | 受理 |
+| HTML-SCRIPT-NOMODULE-03 | `<script type="module" src="./app.js">` | 受理 |
+
+検証対象のモダンブラウザでは `nomodule` が付いた従来型スクリプトは実行されない。属性値の有無ではなく属性の存在を検出する。既存のmoduleと通常scriptを維持し、ブラウザ実機検証・正式CAT機械Gateと区別する。Draftのまま維持。
