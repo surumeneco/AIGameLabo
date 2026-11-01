@@ -8,6 +8,10 @@ export const PAGES = Object.freeze([
 ]);
 
 
+function stripHtmlComments(html) {
+  return html.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+}
+
 function getTagAttribute(tag, attribute) {
   const opening = /^<[\w:-]+\b/.exec(tag);
   if (!opening) return null;
@@ -41,7 +45,7 @@ function getTagAttribute(tag, attribute) {
 }
 
 function hasActiveAssetTag(html, tagName, attribute, asset) {
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const withoutComments = stripHtmlComments(html);
   const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, 'gi')) ?? [];
   return tags.some(tag => {
     if (tagName === 'link') {
@@ -53,7 +57,7 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
 }
 
 function hasActivePageTitle(html, title) {
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const withoutComments = stripHtmlComments(html);
   const match = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title\s*>/i.exec(withoutComments);
   return match?.[1].replace(/\s+/g, ' ').trim() === `${title} | AIGameLabo`;
 }
