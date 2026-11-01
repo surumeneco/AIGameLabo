@@ -62,3 +62,14 @@ HTMLコメントの除去は `-->` がない場合にも文末までをコメン
 | HTML-SCRIPT-TYPE-04 | type省略の従来scriptタグ | 受理 |
 
 HTMLのscript要素にsrcが存在しても、typeが非実行データブロックやimport mapならゲームJSの読み込み証拠ではない。許容するJavaScript MIME essenceとmoduleのみを実行用scriptとして扱う。形式的CAT機械Gateは未実行であり、本DraftはConfirmedではない。
+
+## 追加のdocument base URL境界（同一Work、2026-11-01）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-BASE-01 | 正しいscript/linkと `<base href="https://other.example/">` が共存 | 参照先が別ホストへ変わるため拒否 |
+| HTML-BASE-02 | 正しいscript/linkと `<base href="/other/">` が共存 | 参照先が別ディレクトリへ変わるため拒否 |
+| HTML-BASE-03 | `<base href="./">` で現在の公開ディレクトリを指す | 受理 |
+| HTML-BASE-04 | base要素なしの既存3ページ | 受理 |
+
+HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テキスト上の `./app.js` が一致していても、ブラウザの解決先が公開ページと異なる場合はゲーム資産が一致したと判定しない。HTTP検証は期待する公開ディレクトリ以外への資産参照をfail-closedで拒否する。CAT正式機械Gateはnot-run、Draftのまま維持。
