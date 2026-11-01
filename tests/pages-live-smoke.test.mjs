@@ -286,3 +286,48 @@ test('accepts a document base element resolving to the same public directory', a
   data.set(baseUrl, { ...html, body: html.body.replace('<title>', '<base href="./"><title>') });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('rejects script and stylesheet references found only in a template', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><template><script src="./app.js"></script><link rel="stylesheet" href="./styles.css"></template>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('rejects script and stylesheet references found only in noscript', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><noscript><script src="./app.js"></script><link rel="stylesheet" href="./styles.css"></noscript>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('rejects script references inside nested templates', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><template><template><script src="./app.js"></script></template></template>',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
+
+test('accepts active assets after a closed template', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><template><script src="./wrong.js"></script></template><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
+
+test('rejects asset references after an unterminated template opener', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<title>双路の砦 | AIGameLabo</title><template><script src="./app.js"></script><link rel="stylesheet" href="./styles.css">',
+  });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /missing src=/);
+});
