@@ -28,3 +28,14 @@ npm run dev
 ## 検証の限界
 
 ロジックテスト、Playwright、CI、ビルドの成功は、ゲームの面白さ・難易度・実機の全環境での動作を保証しません。CAT-TDDの正式GateはCIとは別に確認します。
+
+## 公開GitHub PagesのHTTP検証
+
+```sh
+node --test tests/pages-live-smoke.test.mjs
+node scripts/pages-live-smoke.mjs
+```
+
+後者は **公開済みの `main` のPagesサイト**をHTTPSで取得し、3作品のHTMLタイトル・有効な`script`/`link`参照と、JS/CSS計6資産のHTTPステータス・MIME type・最終URLを検証します。HTMLコメント（未終端を含む）や別属性の引用符内に現れる偽の参照は受理せず、引用符内の`>`でタグを誤分割しません。非実行の`script type`、`template`・`noscript`内の不活性参照を除外し、`base href`による資産URLの別ホスト・別ディレクトリへの変更も拒否します。PRのfeatureブランチ自体をデプロイするものではありません。
+
+`.github/workflows/pages-live-http.yml` はPRと手動実行に加え、`main` の「Test and deploy prototypes」が成功した後にも検証します。CIの成功はゲーム操作・主観的な面白さ・正式CAT-TDD Gateの合格を保証しません。
