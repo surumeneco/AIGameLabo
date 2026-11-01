@@ -477,3 +477,24 @@ test('accepts a classic script without nomodule', async () => {
   const result = await checkLivePages({ baseUrl, fetchImpl: mockFetch(fixtures()) });
   assert.equal(result.length, 9);
 });
+
+
+for (const container of ['script', 'style', 'textarea']) {
+  test(`rejects a page title appearing only inside a ${container} element`, async () => {
+    const data = fixtures();
+    data.set(baseUrl, {
+      type: 'text/html',
+      body: `<${container}>fake <title>双路の砦 | AIGameLabo</title></${container}><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>`,
+    });
+    await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /expected page title not found/);
+  });
+}
+
+test('accepts a real page title following a raw-text element', async () => {
+  const data = fixtures();
+  data.set(baseUrl, {
+    type: 'text/html',
+    body: '<script>const fake = "<title>Wrong</title>";</script><title>双路の砦 | AIGameLabo</title><link rel="stylesheet" href="./styles.css"><script src="./app.js"></script>',
+  });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
