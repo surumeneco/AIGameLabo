@@ -49,7 +49,8 @@ function getTagAttribute(tag, attribute) {
     if (i === start) { i++; continue; }
     const key = tag.slice(start, i).toLowerCase();
     while (/\s/.test(tag[i] ?? '')) i++;
-    let value = null;
+    // A present boolean attribute has an empty value; null means absent.
+    let value = '';
     if (tag[i] === '=') {
       i++;
       while (/\s/.test(tag[i] ?? '')) i++;
@@ -76,6 +77,8 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
     if (tagName === 'link') {
       const rel = getTagAttribute(tag, 'rel');
       if (!rel?.toLowerCase().split(/\s+/).includes('stylesheet')) return false;
+      if (getTagAttribute(tag, 'disabled') !== null) return false;
+      if (getTagAttribute(tag, 'media')?.trim().toLowerCase() === 'print') return false;
     }
     if (tagName === 'script') {
       const type = getTagAttribute(tag, 'type');
