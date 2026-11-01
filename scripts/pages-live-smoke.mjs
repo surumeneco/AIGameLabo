@@ -76,7 +76,8 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
   return tags.some(tag => {
     if (tagName === 'link') {
       const rel = getTagAttribute(tag, 'rel');
-      if (!rel?.toLowerCase().split(/\s+/).includes('stylesheet')) return false;
+      const relTokens = rel?.toLowerCase().split(/\s+/) ?? [];
+      if (!relTokens.includes('stylesheet') || relTokens.includes('alternate')) return false;
       if (getTagAttribute(tag, 'disabled') !== null) return false;
       const media = getTagAttribute(tag, 'media')?.trim().toLowerCase();
       if (media && media.split(',').every(query =>
