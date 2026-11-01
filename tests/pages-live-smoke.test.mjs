@@ -265,3 +265,24 @@ test('accepts an executable module script asset reference', async () => {
   });
   assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
 });
+
+test('rejects a document base element that redirects relative assets to another origin', async () => {
+  const data = fixtures();
+  const html = data.get(baseUrl);
+  data.set(baseUrl, { ...html, body: html.body.replace('<title>', '<base href="https://other.example/"><title>') });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /unexpected document base/);
+});
+
+test('rejects a document base element that redirects assets to another directory', async () => {
+  const data = fixtures();
+  const html = data.get(baseUrl);
+  data.set(baseUrl, { ...html, body: html.body.replace('<title>', '<base href="/wrong/"><title>') });
+  await assert.rejects(checkLivePages({ baseUrl, fetchImpl: mockFetch(data) }), /unexpected document base/);
+});
+
+test('accepts a document base element resolving to the same public directory', async () => {
+  const data = fixtures();
+  const html = data.get(baseUrl);
+  data.set(baseUrl, { ...html, body: html.body.replace('<title>', '<base href="./"><title>') });
+  assert.equal((await checkLivePages({ baseUrl, fetchImpl: mockFetch(data) })).length, 9);
+});
