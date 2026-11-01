@@ -7,6 +7,25 @@ export const PAGES = Object.freeze([
   { path: 'island.html', title: 'こもれび島の開拓記', script: 'island.js', stylesheet: 'island.css' },
 ]);
 
+
+function getTagAttribute(tag, attribute) {
+  const pattern = new RegExp(String.raw`(?:\\s|^)${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+  const match = pattern.exec(tag);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
+function hasActiveAssetTag(html, tagName, attribute, asset) {
+  const withoutComments = html.replace(/<!--[\\s\\S]*?-->/g, '');
+  const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\\b[^>]*>`, 'gi')) ?? [];
+  return tags.some(tag => {
+    if (tagName === 'link') {
+      const rel = getTagAttribute(tag, 'rel');
+      if (!rel?.toLowerCase().split(/\\s+/).includes('stylesheet')) return false;
+    }
+    return getTagAttribute(tag, attribute) === `./${asset}`;
+  });
+}
+
 async function fetchText(fetchImpl, url, expectedType) {
   const response = await fetchImpl(url, {
     redirect: 'follow',
@@ -49,7 +68,7 @@ export async function checkLivePages({
       ['src', page.script, 'javascript'],
       ['href', page.stylesheet, 'text/css'],
     ]) {
-      if (!html.includes(`${attribute}="./${asset}"`)) {
+      if (!hasActiveAssetTag(html, attribute === "src" ? "script" : "link", attribute, asset)) {
         throw new Error(`${url.href}: missing ${attribute}="./${asset}"`);
       }
       const assetUrl = new URL(asset, url);
