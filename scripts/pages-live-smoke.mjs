@@ -52,6 +52,18 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
       const rel = getTagAttribute(tag, 'rel');
       if (!rel?.toLowerCase().split(/\s+/).includes('stylesheet')) return false;
     }
+    if (tagName === 'script') {
+      const type = getTagAttribute(tag, 'type');
+      if (type !== null) {
+        const essence = type.split(';', 1)[0].trim().toLowerCase();
+        const executableTypes = [
+          '', 'module', 'text/javascript', 'application/javascript',
+          'application/x-javascript', 'text/ecmascript', 'application/ecmascript',
+          'text/x-javascript', 'application/x-ecmascript',
+        ];
+        if (!executableTypes.includes(essence)) return false;
+      }
+    }
     return getTagAttribute(tag, attribute) === `./${asset}`;
   });
 }
