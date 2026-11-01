@@ -9,18 +9,18 @@ export const PAGES = Object.freeze([
 
 
 function getTagAttribute(tag, attribute) {
-  const pattern = new RegExp(String.raw`(?:\\s|^)${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+  const pattern = new RegExp(String.raw`(?:\s|^)${attribute}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`, 'i');
   const match = pattern.exec(tag);
   return match ? (match[1] ?? match[2] ?? match[3]) : null;
 }
 
 function hasActiveAssetTag(html, tagName, attribute, asset) {
-  const withoutComments = html.replace(/<!--[\\s\\S]*?-->/g, '');
-  const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\\b[^>]*>`, 'gi')) ?? [];
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b[^>]*>`, 'gi')) ?? [];
   return tags.some(tag => {
     if (tagName === 'link') {
       const rel = getTagAttribute(tag, 'rel');
-      if (!rel?.toLowerCase().split(/\\s+/).includes('stylesheet')) return false;
+      if (!rel?.toLowerCase().split(/\s+/).includes('stylesheet')) return false;
     }
     return getTagAttribute(tag, attribute) === `./${asset}`;
   });
