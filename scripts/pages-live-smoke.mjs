@@ -78,7 +78,10 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
       const rel = getTagAttribute(tag, 'rel');
       if (!rel?.toLowerCase().split(/\s+/).includes('stylesheet')) return false;
       if (getTagAttribute(tag, 'disabled') !== null) return false;
-      if (getTagAttribute(tag, 'media')?.trim().toLowerCase() === 'print') return false;
+      const media = getTagAttribute(tag, 'media')?.trim().toLowerCase();
+      if (media && media.split(',').every(query =>
+        /^(?:only\s+)?print(?:\s+and(?:\s|\()|$)/.test(query.trim())
+      )) return false;
     }
     if (tagName === 'script') {
       const type = getTagAttribute(tag, 'type');
