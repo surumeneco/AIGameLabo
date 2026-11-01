@@ -9,14 +9,40 @@ export const PAGES = Object.freeze([
 
 
 function getTagAttribute(tag, attribute) {
-  const pattern = new RegExp(String.raw`(?:\s|^)${attribute}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`, 'i');
-  const match = pattern.exec(tag);
-  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+  const opening = /^<[\w:-]+\b/.exec(tag);
+  if (!opening) return null;
+  let i = opening[0].length;
+  while (i < tag.length) {
+    while (/\s/.test(tag[i] ?? '')) i++;
+    if (tag[i] === '>' || tag[i] === '/' || i >= tag.length) break;
+    const start = i;
+    while (i < tag.length && !/[\s=/>]/.test(tag[i])) i++;
+    if (i === start) { i++; continue; }
+    const key = tag.slice(start, i).toLowerCase();
+    while (/\s/.test(tag[i] ?? '')) i++;
+    let value = null;
+    if (tag[i] === '=') {
+      i++;
+      while (/\s/.test(tag[i] ?? '')) i++;
+      const quote = tag[i] === '"' || tag[i] === "'" ? tag[i++] : null;
+      const valueStart = i;
+      if (quote) {
+        while (i < tag.length && tag[i] !== quote) i++;
+        value = tag.slice(valueStart, i);
+        if (i < tag.length) i++;
+      } else {
+        while (i < tag.length && !/[\s>]/.test(tag[i])) i++;
+        value = tag.slice(valueStart, i);
+      }
+    }
+    if (key === attribute.toLowerCase()) return value;
+  }
+  return null;
 }
 
 function hasActiveAssetTag(html, tagName, attribute, asset) {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b[^>]*>`, 'gi')) ?? [];
+  const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, 'gi')) ?? [];
   return tags.some(tag => {
     if (tagName === 'link') {
       const rel = getTagAttribute(tag, 'rel');
