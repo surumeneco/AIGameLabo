@@ -85,3 +85,13 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-INERT-05 | 未終端templateの後続に参照 | 拒否 |
 
 公開HTTP検証ではJS有効の通常ブラウザを対象とする。template内容はDOMへ挿入されるまで不活性、noscriptのフォールバック内容はJS有効時に実行用資産参照としない。HTMLの限定的な字句検証であり、完全なブラウザDOM解析や実際のJS実行の代替ではない。正式CAT機械Gateはnot-run。
+
+## 追加の有効スタイルシート境界（同一Work、2026-11-01）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-STYLESHEET-ACTIVE-01 | `<link rel="stylesheet" disabled href="./styles.css">` のみ | 無効化されたCSSを有効参照とみなさず拒否 |
+| HTML-STYLESHEET-ACTIVE-02 | `<link rel="stylesheet" media="print" href="./styles.css">` のみ | 画面表示用CSSとして扱わず拒否 |
+| HTML-STYLESHEET-ACTIVE-03 | `media="screen"` または `media="all"` の有効link | 受理 |
+
+検証対象は画面表示を行う3作品である。HTML上にCSSのhrefが存在するだけでなく、画面で適用される有効なstylesheet linkを確認する。一般的な複合media queryの完全評価はこの限定HTTPチェッカーの対象外とし、明白なprint-only/disabledをfail-closedにする。既存のtitle、script、HTTP/MIME、URLの検証は維持する。正式CAT機械Gateは未実行でDraftのまま。
