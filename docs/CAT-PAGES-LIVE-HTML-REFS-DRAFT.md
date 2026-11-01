@@ -150,3 +150,14 @@ HTMLの `<base href>` は相対 `src` / `href` の実解決先を変える。テ
 | HTML-TITLE-RAWTEXT-04 | 上記要素の後に有効なtitle要素が存在 | 受理 |
 
 HTMLのscript/styleはraw-text、textareaはRCDATAとして扱われ、内部の `<title>` 文字列はHTMLのtitle要素にならない。タイトル検証時のみこれらの要素を除外し、資産参照のscriptタグ自体の検査は維持する。正式CAT機械Gateはnot-run、Draftのまま。
+
+## raw-text/RCDATA内の偽資産タグ（同一Draft）
+
+| Case | Input | Expected |
+| --- | --- | --- |
+| HTML-ASSET-RAWTEXT-01 | scriptの文字列内にのみ `<link rel="stylesheet" href="./styles.css">` が存在 | 有効CSS参照として拒否 |
+| HTML-ASSET-RAWTEXT-02 | styleの文字列内にのみ `<script src="./app.js">` が存在 | 有効JS参照として拒否 |
+| HTML-ASSET-RAWTEXT-03 | textarea内にのみJS/CSSのタグ文字列が存在 | 有効資産参照として拒否 |
+| HTML-ASSET-RAWTEXT-04 | script本文内に偽タグがあっても、外側の実際のscript/linkタグは有効 | 受理 |
+
+公開HTTP検証はHTMLのraw-text/RCDATA要素内のタグ状文字列を、DOM要素の資産参照として扱わない。一方、実際のscript開始タグ自体の `src` は保持する。正式CAT機械Gateはnot-run、Draftのまま。
