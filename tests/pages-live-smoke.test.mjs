@@ -7,7 +7,7 @@ function fixtures() {
   const data = new Map();
   for (const page of PAGES) {
     const pageUrl = new URL(page.path, baseUrl).href;
-    data.set(pageUrl, { type: 'text/html', body: `<title>${page.title} | AIGameLabo</title><link href="./${page.stylesheet}"><script src="./${page.script}"></script>` });
+    data.set(pageUrl, { type: 'text/html', body: `<title>${page.title} | AIGameLabo</title><link rel="stylesheet" href="./${page.stylesheet}"><script src="./${page.script}"></script>` });
     data.set(new URL(page.script, pageUrl).href, { type: 'application/javascript', body: 'console.log("a sufficiently long JavaScript asset");' });
     data.set(new URL(page.stylesheet, pageUrl).href, { type: 'text/css', body: '.app { display: grid; min-height: 100vh; }' });
   }
