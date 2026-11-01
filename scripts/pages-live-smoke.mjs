@@ -12,6 +12,29 @@ function stripHtmlComments(html) {
   return html.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
 }
 
+function stripInertContainers(html) {
+  let cleaned = stripHtmlComments(html);
+  for (const name of ['template', 'noscript']) {
+    const pattern = new RegExp(String.raw\`<\\/?\${name}\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>\`, 'gi');
+    const spans = [];
+    let depth = 0;
+    let start = 0;
+    for (const match of cleaned.matchAll(pattern)) {
+      if (match[0].startsWith('</')) {
+        if (depth > 0 && --depth === 0) spans.push([start, match.index + match[0].length]);
+      } else if (depth++ === 0) {
+        start = match.index;
+      }
+    }
+    if (depth > 0) spans.push([start, cleaned.length]);
+    for (let i = spans.length - 1; i >= 0; i--) {
+      const [from, to] = spans[i];
+      cleaned = cleaned.slice(0, from) + cleaned.slice(to);
+    }
+  }
+  return cleaned;
+}
+
 function getTagAttribute(tag, attribute) {
   const opening = /^<[\w:-]+\b/.exec(tag);
   if (!opening) return null;
@@ -45,7 +68,7 @@ function getTagAttribute(tag, attribute) {
 }
 
 function hasActiveAssetTag(html, tagName, attribute, asset) {
-  const withoutComments = stripHtmlComments(html);
+  const withoutComments = stripInertContainers(html);
   const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, 'gi')) ?? [];
   return tags.some(tag => {
     if (tagName === 'link') {
@@ -69,13 +92,13 @@ function hasActiveAssetTag(html, tagName, attribute, asset) {
 }
 
 function hasActivePageTitle(html, title) {
-  const withoutComments = stripHtmlComments(html);
+  const withoutComments = stripInertContainers(html);
   const match = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title\s*>/i.exec(withoutComments);
   return match?.[1].replace(/\s+/g, ' ').trim() === `${title} | AIGameLabo`;
 }
 
 function assertExpectedDocumentBase(html, pageUrl, assets) {
-  const baseTags = stripHtmlComments(html).match(/<base\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi) ?? [];
+  const baseTags = stripInertContainers(html).match(/<base\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi) ?? [];
   const href = baseTags.map(tag => getTagAttribute(tag, 'href')).find(value => value !== null);
   if (href === undefined) return;
   try {
