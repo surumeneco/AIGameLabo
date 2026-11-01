@@ -70,8 +70,16 @@ function getTagAttribute(tag, attribute) {
   return null;
 }
 
+function stripRawTextBodies(html) {
+  // Preserve opening tags (including real script src), not their inert text.
+  return html.replace(
+    /(<(script|style|textarea)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>)[\s\S]*?(<\/\2\s*>|$)/gi,
+    '$1$3',
+  );
+}
+
 function hasActiveAssetTag(html, tagName, attribute, asset) {
-  const withoutComments = stripInertContainers(html);
+  const withoutComments = stripRawTextBodies(stripInertContainers(html));
   const tags = withoutComments.match(new RegExp(String.raw`<${tagName}\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, 'gi')) ?? [];
   return tags.some(tag => {
     if (tagName === 'link') {
