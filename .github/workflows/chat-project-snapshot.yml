@@ -1,0 +1,35 @@
+name: Chat isolated project snapshot (read only)
+on:
+  push:
+    branches: [infra/chat-cat-source-bridge-20261105]
+permissions:
+  contents: read
+jobs:
+  export-fixed-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout a pinned project revision
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: d4a0c384fad70b0081ad2778a369acaa40c65c8f
+          path: snapshot
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify and archive source without executing project code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C snapshot rev-parse HEAD)" = "d4a0c384fad70b0081ad2778a369acaa40c65c8f"
+          printf 'repository=surumeneco/SimpleCoins\nsha=%s\n' "d4a0c384fad70b0081ad2778a369acaa40c65c8f" > snapshot-manifest.txt
+          git -C snapshot archive --format=tar HEAD | gzip -n > simplecoins-fixed-source.tar.gz
+          sha256sum simplecoins-fixed-source.tar.gz
+      - name: Make fixed source accessible to Chat
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-fixed-source-d4a0c384
+          path: |
+            simplecoins-fixed-source.tar.gz
+            snapshot-manifest.txt
+          retention-days: 1
+          if-no-files-found: error
