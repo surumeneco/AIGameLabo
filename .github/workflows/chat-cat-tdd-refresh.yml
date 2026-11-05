@@ -1,0 +1,34 @@
+name: Chat CAT-TDD source refresh (isolated)
+on:
+  push:
+    branches: [infra/chat-cat-source-bridge-20261105]
+permissions:
+  contents: read
+jobs:
+  package-fixed-upstream:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 60284c440ababea93e915eec4056f8cc2fbdc4a1
+          path: upstream
+          persist-credentials: false
+      - name: Verify pinned source and produce archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = "60284c440ababea93e915eec4056f8cc2fbdc4a1"
+          test "$(git -C upstream rev-parse HEAD:.cat-system)" = "7677ef39123ddaaf61ca17fe209ba462563919d0"
+          test -f upstream/.cat-system/scripts/cat_spec_test_sync.py
+          test -f upstream/.cat-system/scripts/cat_suite_manifest.py
+          test -f upstream/.cat-system/config/routing.json
+          mkdir -p output
+          tar -C upstream -czf output/cat-tdd-fixed-60284c44.tar.gz .cat-system
+          sha256sum output/cat-tdd-fixed-60284c44.tar.gz | tee output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-tdd-chat-source-60284c44
+          path: output/
+          if-no-files-found: error
+          retention-days: 7
