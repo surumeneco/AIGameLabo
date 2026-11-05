@@ -14,7 +14,7 @@
 
 ## 検証分類
 
-- 形式的なCAT-TDD process-closure / TestModel / Queue / guard : **not-run**。専用runtimeの検証済み配置がないため、正規Gateを通ったとは扱わない。
+- 形式的なCAT-TDD process-closure / TestModel / Queue / guard : **not-run**。当該実装回次には正規runtimeの検証済み配置がなかったため、正規Gateを通ったとは扱わない。2026-11-05時点でChatGPTホストには固定版 `surumeneco/CAT-TDD@60284c440ababea93e915eec4056f8cc2fbdc4a1` の検証済み実行環境が整備されたが、**本プロジェクト固有のConfirmed仕様・Gate実行証拠は新たに得られていない**。ホスト実行準備と製品Gate成功は別の状態である。
 - ゲームロジック：Node v22.16.0の標準テストランナーで11件すべて成功。防御反撃の回帰テストを追加。
 - シナリオ検査：`npm run validate:scenarios`を実際に実行し、生態3ステージと戦闘3戦の到達可能性を確認。
 - ブラウザ描画：Phaser 3ビルドとGitHub Pages環境で別途確認が必要。
