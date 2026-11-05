@@ -1,0 +1,31 @@
+name: Chat CAT-TDD full regression source snapshot (isolated)
+on:
+  push:
+    branches: [infra/chat-cat-source-bridge-20261105]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 60284c440ababea93e915eec4056f8cc2fbdc4a1
+          path: upstream
+          persist-credentials: false
+      - name: Archive exact fixed checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = "60284c440ababea93e915eec4056f8cc2fbdc4a1"
+          test "$(git -C upstream rev-parse HEAD^{tree})" = "b964c29bc3f20c2eb9e57f699ffcebdad710e870"
+          mkdir -p output
+          git -C upstream archive --format=tar.gz --output="$GITHUB_WORKSPACE/output/cat-tdd-tests-60284c44.tar.gz" HEAD
+          sha256sum output/cat-tdd-tests-60284c44.tar.gz | tee output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-tdd-chat-regression-source-60284c44
+          path: output/
+          retention-days: 7
+          if-no-files-found: error
