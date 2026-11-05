@@ -1,0 +1,16 @@
+name: Chat source transport experiment
+on:
+  push:
+    branches: [infra/chat-cat-source-bridge-20261105]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chat-source-transport-smoke
+          path: docs/chat-cat-source-transfer-note.md
+          retention-days: 1
