@@ -1,0 +1,36 @@
+name: Chat CAT offline Vitest runtime (isolated)
+on:
+  push:
+    branches: [infra/chat-cat-source-bridge-20261105]
+permissions:
+  contents: read
+jobs:
+  build-offline-vitest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Install pinned direct dependency, preserve lock and package payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p offline runtime-export
+          cd offline
+          printf '%s\n' '{"name":"cat-chat-vitest-offline","version":"1.0.0","private":true,"type":"module","devDependencies":{"vitest":"3.2.4"}}' > package.json
+          npm install --no-audit --no-fund
+          node -e "import('vitest/package.json', {with:{type:'json'}}).then(x=>console.log('vitest=',x.default.version))"
+          npm ls --json --all > ../runtime-export/npm-tree.json || true
+          node --version > ../runtime-export/node-version.txt
+          tar -czf ../runtime-export/vitest-linux-x64-node22.tar.gz package.json package-lock.json node_modules
+          cd ../runtime-export
+          sha256sum vitest-linux-x64-node22.tar.gz > SHA256SUMS.txt
+          printf '%s\n' 'Chat-only Vitest dependency transport; no CAT normative authority and no project release.' > README.txt
+          cat SHA256SUMS.txt
+      - name: Upload portable toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat-chat-vitest-linux-x64-node22
+          path: runtime-export/
+          retention-days: 7
+          if-no-files-found: error
