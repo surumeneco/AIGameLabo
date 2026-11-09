@@ -1,0 +1,118 @@
+name: Isolated guarded two-JAR Paper 26.2 real startup
+on:
+  push:
+    branches:
+      - infra/simplecoins-twojar-preflight-paper-smoke-20261110
+permissions:
+  contents: read
+  actions: read
+jobs:
+  guarded-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: 112be6e6ca81fc94ffe145912a59f59aa557e81e
+          persist-credentials: false
+      - name: Verify exact source and bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '112be6e6ca81fc94ffe145912a59f59aa557e81e'
+          test "$(git rev-parse HEAD^{tree})" = 'ffa451a0e5fdc5866edee8846474d2d08739ee89'
+          bash -n tools/paper_start_guard.sh
+          python3 -m unittest discover -s tests -p test_paper_start_guard.py -q
+      - name: Download pinned combined guard and SimpleCoins Paper-tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: simplecoins-guard-staging-26-2
+          repository: surumeneco/AIGameLabo
+          run-id: 42648688640
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/guard-probe-artifact
+      - name: Validate source binary hashes and stage Paper
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=/tmp/simplecoins-guarded-live
+          mkdir -p "$work/plugins"
+          cp /tmp/guard-probe-artifact/plugins/SimpleCoins.jar "$work/plugins/SimpleCoins.jar"
+          cp /tmp/guard-probe-artifact/plugins/SimpleCoinsGuard.jar "$work/plugins/SimpleCoinsGuard.jar"
+          test "$(sha256sum "$work/plugins/SimpleCoins.jar" | cut -d ' ' -f1)" = 'ed8f02aa3fffbe16a1df4efcd9d4f51a651d8fc3fa298e8f8980a5f8ff142830'
+          test "$(sha256sum "$work/plugins/SimpleCoinsGuard.jar" | cut -d ' ' -f1)" = '65cf9cd64336e1ca4864d98d7ef7960821ee8273dfffc843b2cc92510a51acac'
+          builds="$(curl --fail --silent --show-error --location --retry 3 https://fill.papermc.io/v3/projects/paper/versions/26.2/builds)"
+          url="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".url' | head -1)"
+          digest="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".checksums.sha256' | head -1)"
+          test -n "$url" && test "$url" != 'null'
+          curl --fail --silent --show-error --location --retry 3 "$url" -o "$work/paper.jar"
+          (cd "$work"; echo "$digest  paper.jar" | sha256sum -c -)
+          echo "PAPER_SHA256=$digest"
+      - name: Validate denial paths before Paper launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=/tmp/simplecoins-guarded-live
+          main='ed8f02aa3fffbe16a1df4efcd9d4f51a651d8fc3fa298e8f8980a5f8ff142830'
+          guard='65cf9cd64336e1ca4864d98d7ef7960821ee8273dfffc843b2cc92510a51acac'
+          printf 'white-list=true\nenforce-whitelist=true\nonline-mode=false\nserver-ip=127.0.0.1\nserver-port=25569\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > "$work/server.properties"
+          printf '[]\n' > "$work/whitelist.json"
+          printf '[]\n' > "$work/ops.json"
+          echo 'eula=true' > "$work/eula.txt"
+          printf '[{"uuid":"00000000-0000-0000-0000-000000000001","name":"Admin","level":4}]\n' > "$work/ops.json"
+          if bash tools/paper_start_guard.sh "$work" "$main" "$guard" -- /usr/bin/true > "$work/denied-operator.log" 2>&1; then
+            echo 'Unexpected operator bypass allowed' >&2; exit 1
+          fi
+          grep -q 'ops.json must be an empty JSON array' "$work/denied-operator.log"
+          printf '[]\n' > "$work/ops.json"
+          mv "$work/plugins/SimpleCoinsGuard.jar" "$work/guard-temporary-off"
+          if bash tools/paper_start_guard.sh "$work" "$main" "$guard" -- /usr/bin/true > "$work/denied-missing-guard.log" 2>&1; then
+            echo 'Unexpected missing guard allowed' >&2; exit 1
+          fi
+          grep -q 'START_GUARD_DENIED' "$work/denied-missing-guard.log"
+          mv "$work/guard-temporary-off" "$work/plugins/SimpleCoinsGuard.jar"
+          echo 'NEGATIVE_PREFLIGHT_CHECKS_PASSED'
+      - name: Launch actual Paper server through two-JAR preflight and stop cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=/tmp/simplecoins-guarded-live
+          main='ed8f02aa3fffbe16a1df4efcd9d4f51a651d8fc3fa298e8f8980a5f8ff142830'
+          guard='65cf9cd64336e1ca4864d98d7ef7960821ee8273dfffc843b2cc92510a51acac'
+          cd "$work"
+          mkfifo console.stdin
+          exec 3<>console.stdin
+          timeout --signal=TERM 100s bash "$GITHUB_WORKSPACE/tools/paper_start_guard.sh" "$work" "$main" "$guard" -- java -Xms384M -Xmx1536M -jar paper.jar --nogui <&3 > server.log 2>&1 &
+          pid=$!
+          ready=0
+          for i in $(seq 1 75); do
+            if grep -q 'Done (' server.log; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            tail -n 120 server.log; echo 'Paper not ready'; kill "$pid" 2>/dev/null || true; wait "$pid" || true; exit 1
+          fi
+          grep -Fq 'START_GUARD_PASSED' server.log
+          grep -Fq 'Admission guard active (default-deny until verified SimpleCoins service)' server.log
+          grep -Fq 'Settlement engine not connected; player admission remains disabled.' server.log
+          printf 'stop\n' >&3
+          wait "$pid"
+          exec 3>&-
+          tail -n 75 server.log
+          grep -Fq 'Stopping server' server.log
+          grep -Fq 'Saving worlds' server.log
+          ! grep -q 'Error occurred while enabling' server.log
+          echo 'REAL_PAPER_GUARDED_BOOT_STOP_PASSED'
+      - name: Upload verification-only guarded startup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-guarded-live-paper26.2-112be6e6
+          path: |
+            /tmp/simplecoins-guarded-live/server.log
+            /tmp/simplecoins-guarded-live/denied-operator.log
+            /tmp/simplecoins-guarded-live/denied-missing-guard.log
+          if-no-files-found: warn
+          retention-days: 7
