@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 6e9dd00df6385fd4b78ec6091c3e62b314585122
+          ref: 5094f045d5f4ee66f725e6841be6b806d1d83086
           persist-credentials: false
       - name: Confirm source commit before execution
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "6e9dd00df6385fd4b78ec6091c3e62b314585122"
+          test "$(git rev-parse HEAD)" = "5094f045d5f4ee66f725e6841be6b806d1d83086"
           git rev-parse HEAD^{tree}
       - name: Prepare JDK25 and Gradle
         uses: actions/setup-java@v4
@@ -41,6 +41,8 @@ jobs:
           jar --list --file admission-guard/build/libs/admission-guard-1.0.0.jar | grep -qx 'plugin.yml'
           jar --list --file admission-guard/build/libs/admission-guard-1.0.0.jar | grep -qx 'co/surumene/simplecoins/guard/api/AdmissionPermit.class'
           ! jar --list --file build/libs/SimpleCoins-1.0.0.jar | grep -q '^co/surumene/simplecoins/guard/api/AdmissionPermit.class$'
+          python3 -m unittest discover -s tests -p test_simplecoins_preflight.py -v
+          python3 tools/simplecoins_preflight.py admission-guard/build/libs/admission-guard-1.0.0.jar build/libs/SimpleCoins-1.0.0.jar
           echo "PROBE_BOTH_PLUGIN_JARS_OK"
       - name: Build temporary host probe without adding project sources
         shell: bash
@@ -193,7 +195,6 @@ jobs:
           mkdir -p /tmp/simplecoins-handoff/plugins /tmp/simplecoins-handoff/logs
           cp admission-guard/build/libs/admission-guard-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoinsGuard.jar
           cp build/libs/SimpleCoins-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoins.jar
-          cp /tmp/paper-proof/*/server.log /tmp/simplecoins-handoff/logs/ || true
           for scenario in main-missing main-disabled guard-disabled; do
             cp "/tmp/paper-proof/$scenario/server.log" "/tmp/simplecoins-handoff/logs/$scenario.log"
           done
