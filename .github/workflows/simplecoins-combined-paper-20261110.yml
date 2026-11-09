@@ -39,7 +39,7 @@ jobs:
           import io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent;
           import net.kyori.adventure.text.Component;
           import org.bukkit.Bukkit;
-          import org.bukkit.event.RegisteredListener;
+          import org.bukkit.plugin.RegisteredListener;
           import org.bukkit.plugin.Plugin;
           import org.bukkit.plugin.java.JavaPlugin;
           public final class HostedVerification extends JavaPlugin {
