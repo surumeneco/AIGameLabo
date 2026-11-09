@@ -100,7 +100,7 @@ jobs:
                       Bukkit.shutdown();
                   }
               }
-              private static void assertDeny(Plugin guard, Plugin main) {
+              private static void assertDeny(Plugin guard, Plugin main) throws org.bukkit.event.EventException {
                   PlayerConnectionValidateLoginEvent event =
                           new PlayerConnectionValidateLoginEvent(null, null);
                   for (RegisteredListener handler :
