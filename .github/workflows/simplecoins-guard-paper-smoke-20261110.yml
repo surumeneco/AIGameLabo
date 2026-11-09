@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 5094f045d5f4ee66f725e6841be6b806d1d83086
+          ref: d18d764c7420393825cc20c130141dbbb3e61dd0
           persist-credentials: false
       - name: Confirm source commit before execution
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "5094f045d5f4ee66f725e6841be6b806d1d83086"
+          test "$(git rev-parse HEAD)" = "d18d764c7420393825cc20c130141dbbb3e61dd0"
           git rev-parse HEAD^{tree}
       - name: Prepare JDK25 and Gradle
         uses: actions/setup-java@v4
@@ -91,7 +91,14 @@ jobs:
                               getLogger().info("GUARD_PROBE_GUARD_DISABLED_STOP_REQUESTED");
                           } else {
                               Bukkit.getPluginManager().disablePlugin(main);
-                              if (guard.isEnabled()) assertDeny(guard, main);
+                              if (guard.isEnabled()) {
+                                  assertDeny(guard, main);
+                                  var latch = guard.getClass().getDeclaredField("stopping");
+                                  latch.setAccessible(true);
+                                  if (!latch.getBoolean(guard))
+                                      throw new IllegalStateException("Disable event did not latch immediate denial");
+                                  getLogger().info("GUARD_PROBE_DISABLE_LATCH_ACTIVE");
+                              }
                               getLogger().info("GUARD_PROBE_MAIN_DISABLED_GUARD_STILL_DENIES");
                           }
                       } else {
