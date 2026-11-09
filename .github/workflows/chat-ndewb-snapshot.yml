@@ -1,0 +1,31 @@
+name: Chat isolated NDEWB source snapshot
+on:
+  push:
+    branches:
+      - infra/chat-ndewb-snapshot-20261109
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch immutable public project commit
+        run: |
+          set -eu
+          git clone --quiet https://github.com/surumeneco/NormalDespawnEndermanWithBlocks.git project
+          git -C project checkout --quiet 484c83b929d6f67575651be7465339082b59dd84
+          test "$(git -C project rev-parse HEAD)" = "484c83b929d6f67575651be7465339082b59dd84"
+          test "$(git -C project rev-parse HEAD^{tree})" = "25c57d5f2e067259d7c407cce644cc4628a4f6cd"
+          mkdir -p output
+          git -C project archive --format=tar.gz --output="$PWD/output/project-source.tar.gz" HEAD
+          sha256sum output/project-source.tar.gz | tee output/sha256.txt
+          printf '%s\n' 'repository=surumeneco/NormalDespawnEndermanWithBlocks' 'commit=484c83b929d6f67575651be7465339082b59dd84' 'tree=25c57d5f2e067259d7c407cce644cc4628a4f6cd' > output/identity.txt
+      - name: Upload immutable source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndewb-source-484c83
+          path: output/
+          if-no-files-found: error
