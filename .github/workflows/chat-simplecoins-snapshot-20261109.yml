@@ -1,0 +1,38 @@
+name: Chat isolated SimpleCoins source snapshot
+on:
+  push:
+    branches:
+      - infra/chat-simplecoins-snapshot-20261109
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned product source
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: a888c888aa986e418c6e455497ea51eec4a16973
+          persist-credentials: false
+      - name: Archive pinned source read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'a888c888aa986e418c6e455497ea51eec4a16973'
+          git archive --format=tar HEAD -o /tmp/simplecoins-source.tar
+          sha256sum /tmp/simplecoins-source.tar
+          printf '%s\n' 'surumeneco/SimpleCoins' > /tmp/repository.txt
+          printf '%s\n' 'a888c888aa986e418c6e455497ea51eec4a16973' > /tmp/commit.txt
+          printf '%s\n' 'a4c0e39a3caba3ba8b4bc4ac4306ecfba9ba178e' > /tmp/tree.txt
+      - name: Upload immutable project snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-chat-snapshot-a888c888
+          path: |
+            /tmp/simplecoins-source.tar
+            /tmp/repository.txt
+            /tmp/commit.txt
+            /tmp/tree.txt
+          if-no-files-found: error
+          retention-days: 1
