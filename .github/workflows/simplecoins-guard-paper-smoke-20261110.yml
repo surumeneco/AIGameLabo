@@ -1,0 +1,209 @@
+name: Isolated SimpleCoins STARTUP guard Paper 26.2 proof
+on:
+  push:
+    branches:
+      - infra/chat-simplecoins-guard-smoke-20261110
+permissions:
+  contents: read
+jobs:
+  actual-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned candidate source
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: 6e9dd00df6385fd4b78ec6091c3e62b314585122
+          persist-credentials: false
+      - name: Confirm source commit before execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "6e9dd00df6385fd4b78ec6091c3e62b314585122"
+          git rev-parse HEAD^{tree}
+      - name: Prepare JDK25 and Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Build both plugin jars and execute all JUnit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :test :jar :admission-guard:test :admission-guard:jar
+          test -s build/libs/SimpleCoins-1.0.0.jar
+          test -s admission-guard/build/libs/admission-guard-1.0.0.jar
+          jar --list --file build/libs/SimpleCoins-1.0.0.jar | grep -qx 'plugin.yml'
+          jar --list --file admission-guard/build/libs/admission-guard-1.0.0.jar | grep -qx 'plugin.yml'
+          jar --list --file admission-guard/build/libs/admission-guard-1.0.0.jar | grep -qx 'co/surumene/simplecoins/guard/api/AdmissionPermit.class'
+          ! jar --list --file build/libs/SimpleCoins-1.0.0.jar | grep -q '^co/surumene/simplecoins/guard/api/AdmissionPermit.class$'
+          echo "PROBE_BOTH_PLUGIN_JARS_OK"
+      - name: Build temporary host probe without adding project sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/test/java/co/surumene/simplecoins/spike /tmp/simplecoins-probe-descriptor
+          cat > src/test/java/co/surumene/simplecoins/spike/GuardSmokeProbe.java <<'JAVA'
+          package co.surumene.simplecoins.spike;
+
+          import io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent;
+          import net.kyori.adventure.text.Component;
+          import org.bukkit.Bukkit;
+          import org.bukkit.plugin.Plugin;
+          import org.bukkit.plugin.RegisteredListener;
+          import org.bukkit.plugin.java.JavaPlugin;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.util.Objects;
+
+          public final class GuardSmokeProbe extends JavaPlugin {
+              @Override public void onEnable() {
+                  Bukkit.getScheduler().runTaskLater(this, this::checkAndStop, 12L);
+              }
+              private void checkAndStop() {
+                  try {
+                      Plugin guard = Bukkit.getPluginManager().getPlugin("SimpleCoinsGuard");
+                      Plugin main = Bukkit.getPluginManager().getPlugin("SimpleCoins");
+                      boolean expectMain = Files.exists(Path.of("expect-main"));
+                      boolean disableGuard = Files.exists(Path.of("disable-guard"));
+                      if (guard == null || !guard.isEnabled()) throw new IllegalStateException("guard missing/disabled");
+                      if ((main != null && main.isEnabled()) != expectMain) throw new IllegalStateException("main mismatch");
+                      int guardHandlers = 0, mainHandlers = 0;
+                      for (RegisteredListener handler :
+                              PlayerConnectionValidateLoginEvent.getHandlerList().getRegisteredListeners()) {
+                          if (handler.getPlugin() == guard) guardHandlers++;
+                          if (handler.getPlugin() == main) mainHandlers++;
+                      }
+                      if (guardHandlers != 1 || mainHandlers != (expectMain ? 1 : 0))
+                          throw new IllegalStateException("Handler registration mismatch: guard=" + guardHandlers
+                                  + " main=" + mainHandlers);
+                      assertDeny(guard, main);
+                      getLogger().info("GUARD_PROBE_DEFAULT_DENY_OK scenario=" + (expectMain ? "main-loaded" : "main-missing"));
+                      if (expectMain) {
+                          if (disableGuard) {
+                              Bukkit.getPluginManager().disablePlugin(guard);
+                              getLogger().info("GUARD_PROBE_GUARD_DISABLED_STOP_REQUESTED");
+                          } else {
+                              Bukkit.getPluginManager().disablePlugin(main);
+                              if (guard.isEnabled()) assertDeny(guard, main);
+                              getLogger().info("GUARD_PROBE_MAIN_DISABLED_GUARD_STILL_DENIES");
+                          }
+                      } else {
+                          Bukkit.shutdown();
+                      }
+                  } catch (Throwable failure) {
+                      getLogger().severe("GUARD_PROBE_FAILED " + failure);
+                      Bukkit.shutdown();
+                  }
+              }
+              private static void assertDeny(Plugin guard, Plugin main) {
+                  PlayerConnectionValidateLoginEvent event =
+                          new PlayerConnectionValidateLoginEvent(null, null);
+                  for (RegisteredListener handler :
+                          PlayerConnectionValidateLoginEvent.getHandlerList().getRegisteredListeners()) {
+                      if (handler.getPlugin() == guard || handler.getPlugin() == main) handler.callEvent(event);
+                  }
+                  if (event.isAllowed() || event.getKickMessage() == null)
+                      throw new IllegalStateException("Unauthorized connection became allowed");
+                  Component earlier = Component.text("Independent ban");
+                  PlayerConnectionValidateLoginEvent banned =
+                          new PlayerConnectionValidateLoginEvent(null, earlier);
+                  for (RegisteredListener handler :
+                          PlayerConnectionValidateLoginEvent.getHandlerList().getRegisteredListeners()) {
+                      if (handler.getPlugin() == guard || handler.getPlugin() == main) handler.callEvent(banned);
+                  }
+                  if (banned.isAllowed() || !Objects.equals(banned.getKickMessage(), earlier))
+                      throw new IllegalStateException("Prior ban was overwritten");
+              }
+          }
+          JAVA
+          cat > /tmp/simplecoins-probe-descriptor/plugin.yml <<'YAML'
+          name: SimpleCoinsGuardProbe
+          version: 0.0.1
+          main: co.surumene.simplecoins.spike.GuardSmokeProbe
+          api-version: '26.2'
+          load: POSTWORLD
+          softdepend:
+            - SimpleCoinsGuard
+            - SimpleCoins
+          YAML
+          gradle --no-daemon :testClasses
+          jar --create --file /tmp/simplecoins-probe.jar -C build/classes/java/test co/surumene/simplecoins/spike/GuardSmokeProbe.class -C /tmp/simplecoins-probe-descriptor plugin.yml
+          test -s /tmp/simplecoins-probe.jar
+      - name: Fetch official Paper 26.2 build 134 and verify SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          builds="$(curl --fail --silent --show-error --location --retry 3 https://fill.papermc.io/v3/projects/paper/versions/26.2/builds)"
+          url="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".url' | head -1)"
+          digest="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".checksums.sha256' | head -1)"
+          test -n "$url" && test "$url" != "null"
+          test -n "$digest" && test "$digest" != "null"
+          curl --fail --silent --show-error --location --retry 3 "$url" --output /tmp/simplecoins-paper.jar
+          echo "$digest  /tmp/simplecoins-paper.jar" | sha256sum --check -
+          echo "PROBE_PAPER_SHA256=$digest"
+      - name: Execute real Paper server in three isolated scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/paper-proof
+          for scenario in main-missing main-disabled guard-disabled; do
+            work="/tmp/paper-proof/$scenario"
+            mkdir -p "$work/plugins"
+            cp /tmp/simplecoins-paper.jar "$work/paper.jar"
+            cp admission-guard/build/libs/admission-guard-1.0.0.jar "$work/plugins/SimpleCoinsGuard.jar"
+            cp /tmp/simplecoins-probe.jar "$work/plugins/GuardSmokeProbe.jar"
+            if [ "$scenario" != main-missing ]; then
+              cp build/libs/SimpleCoins-1.0.0.jar "$work/plugins/SimpleCoins.jar"
+              touch "$work/expect-main"
+            fi
+            if [ "$scenario" = guard-disabled ]; then touch "$work/disable-guard"; fi
+            echo eula=true > "$work/eula.txt"
+            printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25568\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > "$work/server.properties"
+            pushd "$work"
+            set +e
+            timeout --signal=TERM 120s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
+            rc=$?
+            set -e
+            popd
+            tail -n 35 "$work/server.log"
+            echo "PROBE_SCENARIO=$scenario EXIT=$rc"
+            test "$rc" -eq 0
+            grep -q 'GUARD_PROBE_DEFAULT_DENY_OK' "$work/server.log"
+            if [ "$scenario" = main-disabled ]; then
+              grep -q 'GUARD_PROBE_MAIN_DISABLED_GUARD_STILL_DENIES' "$work/server.log"
+            fi
+            if [ "$scenario" = guard-disabled ]; then
+              grep -q 'GUARD_PROBE_GUARD_DISABLED_STOP_REQUESTED' "$work/server.log"
+            fi
+            if grep -q 'GUARD_PROBE_FAILED' "$work/server.log"; then exit 1; fi
+            grep -q 'Stopping server' "$work/server.log"
+            grep -q 'Saving worlds' "$work/server.log"
+          done
+          echo "PROBE_ALL_THREE_PAPER_SCENARIOS_PASSED"
+      - name: Prepare user staging outputs
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/simplecoins-handoff/plugins /tmp/simplecoins-handoff/logs
+          cp admission-guard/build/libs/admission-guard-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoinsGuard.jar
+          cp build/libs/SimpleCoins-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoins.jar
+          cp /tmp/paper-proof/*/server.log /tmp/simplecoins-handoff/logs/ || true
+          for scenario in main-missing main-disabled guard-disabled; do
+            cp "/tmp/paper-proof/$scenario/server.log" "/tmp/simplecoins-handoff/logs/$scenario.log"
+          done
+          (cd /tmp/simplecoins-handoff && sha256sum plugins/*.jar > sha256.txt)
+          printf '%s\n' 'Technical test ONLY; default-deny and NO live journaling/real coin functionality. DO NOT DEPLOY ON PRODUCTION.' > /tmp/simplecoins-handoff/README.txt
+      - name: Upload staging JARs and exact Paper smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-guard-staging-26-2
+          path: /tmp/simplecoins-handoff/
+          if-no-files-found: warn
+          retention-days: 7
