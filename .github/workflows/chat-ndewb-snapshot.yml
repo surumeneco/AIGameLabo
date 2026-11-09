@@ -16,16 +16,16 @@ jobs:
         run: |
           set -eu
           git clone --quiet https://github.com/surumeneco/NormalDespawnEndermanWithBlocks.git project
-          git -C project checkout --quiet 484c83b929d6f67575651be7465339082b59dd84
-          test "$(git -C project rev-parse HEAD)" = "484c83b929d6f67575651be7465339082b59dd84"
-          test "$(git -C project rev-parse HEAD^{tree})" = "25c57d5f2e067259d7c407cce644cc4628a4f6cd"
+          git -C project checkout --quiet 104b82f76f119af0316603d28c73d578fbff5dfa
+          test "$(git -C project rev-parse HEAD)" = "104b82f76f119af0316603d28c73d578fbff5dfa"
+          test "$(git -C project rev-parse HEAD^{tree})" = "1cb873e73692b174f2978aa77cd8e2d256ac2fe5"
           mkdir -p output
           git -C project archive --format=tar.gz --output="$PWD/output/project-source.tar.gz" HEAD
           sha256sum output/project-source.tar.gz | tee output/sha256.txt
-          printf '%s\n' 'repository=surumeneco/NormalDespawnEndermanWithBlocks' 'commit=484c83b929d6f67575651be7465339082b59dd84' 'tree=25c57d5f2e067259d7c407cce644cc4628a4f6cd' > output/identity.txt
+          printf '%s\n' 'repository=surumeneco/NormalDespawnEndermanWithBlocks' 'commit=104b82f76f119af0316603d28c73d578fbff5dfa' 'tree=1cb873e73692b174f2978aa77cd8e2d256ac2fe5' > output/identity.txt
       - name: Upload immutable source archive
         uses: actions/upload-artifact@v4
         with:
-          name: ndewb-source-484c83
+          name: ndewb-source-104b82
           path: output/
           if-no-files-found: error
