@@ -1,4 +1,4 @@
-name: Isolated Paper 26.2 lifecycle technical probe
+name: Isolated Paper 26.2 actual SimpleCoins bootstrap smoke
 on:
   push:
     branches:
@@ -10,18 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 9
     steps:
-      - name: Checkout immutable SimpleCoins commit
+      - name: Checkout immutable SimpleCoins bootstrap feature commit
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 85c25554e30f742291395c02a4d8481a0f7d3c2f
+          ref: 04a18ff730e9dd788c370ca34cb71c3d10200e78
           persist-credentials: false
-      - name: Check immutable source
+      - name: Verify immutable tree
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "85c25554e30f742291395c02a4d8481a0f7d3c2f"
-          test "$(git rev-parse HEAD^{tree})" = "2e1e79dc1f797a232fe2acf7a3d820272e361f92"
+          test "$(git rev-parse HEAD)" = "04a18ff730e9dd788c370ca34cb71c3d10200e78"
+          test "$(git rev-parse HEAD^{tree})" = "8690cb5de38669ccfefd8d8e9ed1856ae2ecfbde"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,85 +29,65 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Add temporary test-only JavaPlugin
+      - name: Build real plugin and test-only companion checker
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p src/test/java/co/surumene/simplecoins/spike
-          cat > src/test/java/co/surumene/simplecoins/spike/PaperBootstrapProbe.java <<'JAVA'
+          cat > src/test/java/co/surumene/simplecoins/spike/PaperAdmissionHostProbe.java <<'JAVA'
           package co.surumene.simplecoins.spike;
 
-          import co.surumene.simplecoins.SettlementAdmissionListener;
-          import co.surumene.simplecoins.domain.AdmissionBarrier;
-          import co.surumene.simplecoins.domain.SettlementSnapshotPublisher;
           import io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent;
           import org.bukkit.Bukkit;
-          import org.bukkit.plugin.java.JavaPlugin;
           import org.bukkit.plugin.RegisteredListener;
+          import org.bukkit.plugin.java.JavaPlugin;
 
-          /**
-           * Technical spike only. NOT SimpleCoins production plugin, CAT Confirmed,
-           * settlement completion, or a server-wide disable-safety guarantee.
-           */
-          public final class PaperBootstrapProbe extends JavaPlugin {
-              private final AdmissionBarrier gate = new AdmissionBarrier();
-              private final SettlementSnapshotPublisher publication =
-                      new SettlementSnapshotPublisher(gate);
-
-              @Override
-              public void onEnable() {
-                  // No connection is permitted before a verified settlement publication.
-                  var adapter = new SettlementAdmissionListener(gate, publication);
-                  getServer().getPluginManager().registerEvents(adapter, this);
-                  getLogger().info("PROBE_REGISTERED_DEFAULT_DENY");
+          /** External observation fixture, NEVER included in SimpleCoins JAR. */
+          public final class PaperAdmissionHostProbe extends JavaPlugin {
+              @Override public void onEnable() {
                   getServer().getScheduler().runTaskLater(this, () -> {
                       try {
-                          PlayerConnectionValidateLoginEvent event =
-                                  new PlayerConnectionValidateLoginEvent(null, null);
-                          int invoked = 0;
-                          for (RegisteredListener handler :
+                          var target = getServer().getPluginManager().getPlugin("SimpleCoins");
+                          if (target == null || !target.isEnabled())
+                              throw new IllegalStateException("SimpleCoins is not enabled");
+                          var event = new PlayerConnectionValidateLoginEvent(null, null);
+                          int count = 0;
+                          for (RegisteredListener listener :
                                   PlayerConnectionValidateLoginEvent.getHandlerList().getRegisteredListeners()) {
-                              if (handler.getPlugin() != this) continue;
-                              handler.callEvent(event);
-                              invoked++;
+                              if (listener.getPlugin() != target) continue;
+                              listener.callEvent(event);
+                              count++;
                           }
-                          if (invoked != 1 || event.isAllowed() || event.getKickMessage() == null)
-                              throw new IllegalStateException(
-                                      "Default-deny validation failed: invoked=" + invoked);
-                          if (Bukkit.getOnlinePlayers().size() != 0)
-                              throw new IllegalStateException("Test has online players");
-                          getLogger().info("PROBE_REGISTERED_HANDLER_REJECTS");
-                          // Exercise administrator/manual plugin-disable failure path.
-                          getServer().getPluginManager().disablePlugin(this);
-                      } catch (Throwable failure) {
-                          getLogger().severe("PROBE_FAILED " + failure);
+                          if (count != 1 || event.isAllowed() || event.getKickMessage() == null)
+                              throw new IllegalStateException("Join was not default denied: count=" + count);
+                          if (!Bukkit.getOnlinePlayers().isEmpty())
+                              throw new IllegalStateException("Probe requires 0 players");
+                          getLogger().info("HOST_PROBE_DEFAULT_DENY_CONFIRMED");
+                          getLogger().info("HOST_PROBE_DISABLE_TARGET");
+                          getServer().getPluginManager().disablePlugin(target);
+                      } catch (Throwable e) {
+                          getLogger().severe("HOST_PROBE_FAILED " + e);
                           Bukkit.shutdown();
                       }
                   }, 5L);
               }
-
-              @Override
-              public void onDisable() {
-                  gate.stop();
-                  getLogger().info("PROBE_DISABLE_REQUESTS_SERVER_SHUTDOWN");
-                  // The listener is removed during disable: the same plugin
-                  // cannot independently enforce admission after its own disable.
-                  Bukkit.shutdown();
-              }
           }
           JAVA
-          gradle --no-daemon clean testClasses
-          mkdir -p /tmp/simplecoins-paper-probe/plugins /tmp/simplecoins-paper-probe/descriptor
-          cat > /tmp/simplecoins-paper-probe/descriptor/plugin.yml <<'YAML'
-          name: SimpleCoinsPaperLifecycleProbe
-          version: 0.0.0-technical-spike
-          main: co.surumene.simplecoins.spike.PaperBootstrapProbe
+          gradle --no-daemon clean test jar
+          mkdir -p /tmp/simplecoins-paper-actual/plugins /tmp/simplecoins-paper-actual/host
+          cp build/libs/SimpleCoins-1.0.0.jar /tmp/simplecoins-paper-actual/plugins/SimpleCoins.jar
+          cat > /tmp/simplecoins-paper-actual/host/plugin.yml <<'YAML'
+          name: SimpleCoinsHostProbe
+          version: 0.0.0-technical
+          main: co.surumene.simplecoins.spike.PaperAdmissionHostProbe
           api-version: '26.2'
           load: POSTWORLD
+          depend:
+            - SimpleCoins
           YAML
-          jar --create --file /tmp/simplecoins-paper-probe/plugins/SimpleCoinsProbe.jar -C build/classes/java/main . -C build/classes/java/test co/surumene/simplecoins/spike/PaperBootstrapProbe.class -C /tmp/simplecoins-paper-probe/descriptor plugin.yml
-          jar --list --file /tmp/simplecoins-paper-probe/plugins/SimpleCoinsProbe.jar | grep -E '^(plugin.yml|co/surumene/simplecoins/spike/PaperBootstrapProbe.class)$'
-      - name: Retrieve official Paper 26.2 stable server with digest
+          jar --create --file /tmp/simplecoins-paper-actual/plugins/SimpleCoinsHostProbe.jar -C build/classes/java/test co/surumene/simplecoins/spike/PaperAdmissionHostProbe.class -C /tmp/simplecoins-paper-actual/host plugin.yml
+          jar --list --file /tmp/simplecoins-paper-actual/plugins/SimpleCoins.jar | grep -E '^(plugin.yml|co/surumene/simplecoins/SimpleCoinsPlugin.class)$'
+      - name: Retrieve official Paper 26.2 stable build 134
         shell: bash
         run: |
           set -euo pipefail
@@ -116,32 +96,34 @@ jobs:
           digest="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".checksums.sha256' | head -1)"
           test -n "$url" && test "$url" != "null"
           test -n "$digest" && test "$digest" != "null"
-          curl --fail --silent --show-error --location --retry 3 "$url" --output /tmp/simplecoins-paper-probe/paper.jar
-          (cd /tmp/simplecoins-paper-probe && echo "$digest  paper.jar" | sha256sum --check -)
-          echo "PROBE_PAPER_BUILD_134_SHA256=$digest"
-      - name: Run isolated Paper server and inspect admission and disable
+          curl --fail --silent --show-error --location --retry 3 "$url" --output /tmp/simplecoins-paper-actual/paper.jar
+          (cd /tmp/simplecoins-paper-actual && echo "$digest  paper.jar" | sha256sum --check -)
+          echo "HOST_PROBE_PAPER_SHA256=$digest"
+      - name: Boot real plugin on Paper and verify denial/disable/shutdown
         shell: bash
         run: |
           set -euo pipefail
-          cd /tmp/simplecoins-paper-probe
+          cd /tmp/simplecoins-paper-actual
           echo 'eula=true' > eula.txt
-          printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25568\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > server.properties
+          printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25569\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > server.properties
           set +e
-          timeout --signal=TERM 160s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
+          timeout --signal=TERM 150s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
           rc="$?"
           set -e
-          tail -n 140 server.log
-          echo "PROBE_SERVER_EXIT_CODE=$rc"
+          tail -n 130 server.log
+          echo "HOST_PROBE_EXIT_CODE=$rc"
           test "$rc" -eq 0
-          grep -q 'PROBE_REGISTERED_DEFAULT_DENY' server.log
-          grep -q 'PROBE_REGISTERED_HANDLER_REJECTS' server.log
-          grep -q 'PROBE_DISABLE_REQUESTS_SERVER_SHUTDOWN' server.log
-          grep -E 'Stopping server|Saving worlds' server.log
-      - name: Upload probe and server logs
+          grep -q 'Settlement engine not connected; player admission remains disabled.' server.log
+          grep -q 'HOST_PROBE_DEFAULT_DENY_CONFIRMED' server.log
+          grep -q 'HOST_PROBE_DISABLE_TARGET' server.log
+          grep -q 'SimpleCoins admission protection disabled: stopping Paper.' server.log
+          grep -q 'Stopping server' server.log
+          grep -q 'Saving worlds' server.log
+      - name: Upload actual Paper log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: paper26.2-simplecoins-disable-smoke
-          path: /tmp/simplecoins-paper-probe/server.log
+          name: simplecoins-real-bootstrap-paper26.2-log
+          path: /tmp/simplecoins-paper-actual/server.log
           if-no-files-found: warn
           retention-days: 7
