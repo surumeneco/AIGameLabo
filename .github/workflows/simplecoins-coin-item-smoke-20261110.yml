@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 736391100cea20b41ee766ddaf63da2aaa500a6e
+          ref: 5ea9cdca5675448273e834cb13f8e47aa21c3df8
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "736391100cea20b41ee766ddaf63da2aaa500a6e"
+        run: test "$(git rev-parse HEAD)" = "5ea9cdca5675448273e834cb13f8e47aa21c3df8"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
