@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: a3491ca0b5608791e8fcf538323bae4ad9608a8b
+          ref: 434c8f10d39e6ec931645ac708cc9184d4fcd5f4
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "a3491ca0b5608791e8fcf538323bae4ad9608a8b"
+        run: test "$(git rev-parse HEAD)" = "434c8f10d39e6ec931645ac708cc9184d4fcd5f4"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,6 +25,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
+      - name: Archive exact product source for CAT host verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/coin-paper
+          git archive --format=tar HEAD | gzip -n > /tmp/coin-paper/simplecoins-exact-source.tar.gz
+          git rev-parse HEAD > /tmp/coin-paper/product-head.txt
+          git rev-parse HEAD^{tree} > /tmp/coin-paper/product-tree.txt
+          sha256sum /tmp/coin-paper/simplecoins-exact-source.tar.gz | tee /tmp/coin-paper/source-archive.sha256
       - name: Build source and run existing tests
         shell: bash
         run: |
@@ -162,6 +171,23 @@ jobs:
                               || fromConfig.get(1).getAmount() != 1)
                           throw new AssertionError("trader config materialization mismatch");
                       getLogger().info("COIN_TRADER_CONFIG_PAPER_PASSED count=65 stacks=2");
+                      var legacyConfig = new YamlConfiguration();
+                      legacyConfig.set("trader-drops.enabled", true);
+                      legacyConfig.set("trader-drops.chance", 1.0);
+                      legacyConfig.set("trader-drops.minimum-count", 1);
+                      legacyConfig.set("trader-drops.maximum-count", 1);
+                      legacyConfig.set("trader-drops.weights.100", 1);
+                      var legacy = WanderingTraderDropConfigReader.read(legacyConfig);
+                      if (legacy.maxStacksPerEvent() != 1
+                              || legacy.policy().draw(new java.util.Random(1))
+                                  .orElseThrow().denomination() != CoinDenomination.HUNDRED)
+                          throw new AssertionError("legacy candidate config failed");
+                      legacyConfig.set("trader-drops.probability", 0.1);
+                      try {
+                          WanderingTraderDropConfigReader.read(legacyConfig);
+                          throw new AssertionError("ambiguous trader config aliases accepted");
+                      } catch (IllegalArgumentException expectedError) { }
+                      getLogger().info("COIN_TRADER_CONFIG_LEGACY_ALIAS_PASSED");
                       var trader = (WanderingTrader) Bukkit.getWorlds().get(0).spawnEntity(
                               Bukkit.getWorlds().get(0).getSpawnLocation(), EntityType.WANDERING_TRADER);
                       var drops = new java.util.ArrayList<ItemStack>();
@@ -317,6 +343,7 @@ jobs:
           grep -q 'COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=9' server.log
           grep -q 'COIN_TRADER_STACK_PREPARATION_PASSED count=2 value=6500' server.log
           grep -q 'COIN_TRADER_CONFIG_PAPER_PASSED count=65 stacks=2' server.log
+          grep -q 'COIN_TRADER_CONFIG_LEGACY_ALIAS_PASSED' server.log
           grep -q 'COIN_TRADER_DEATH_RECEIPT_PASSED stacks=2 value=6500 replay=noop' server.log
           grep -q 'COIN_PAPER_TWENTY_RECIPES_REGISTERED_PASSED count=20' server.log
           grep -q 'Stopping server' server.log
@@ -331,4 +358,16 @@ jobs:
             /tmp/coin-paper/server.log
             /tmp/coin-paper/plugins/CoinItemProbe.jar
           if-no-files-found: warn
+          retention-days: 7
+      - name: Upload immutable exact-source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-exact-source
+          path: |
+            /tmp/coin-paper/simplecoins-exact-source.tar.gz
+            /tmp/coin-paper/product-head.txt
+            /tmp/coin-paper/product-tree.txt
+            /tmp/coin-paper/source-archive.sha256
+          if-no-files-found: error
           retention-days: 7
