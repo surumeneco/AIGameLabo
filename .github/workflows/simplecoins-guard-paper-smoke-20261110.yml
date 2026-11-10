@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: d18d764c7420393825cc20c130141dbbb3e61dd0
+          ref: 900545c1aa62b69c968c3ebea0c92162a0e257c4
           persist-credentials: false
       - name: Confirm source commit before execution
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "d18d764c7420393825cc20c130141dbbb3e61dd0"
+          test "$(git rev-parse HEAD)" = "900545c1aa62b69c968c3ebea0c92162a0e257c4"
           git rev-parse HEAD^{tree}
       - name: Prepare JDK25 and Gradle
         uses: actions/setup-java@v4
@@ -143,6 +143,45 @@ jobs:
           gradle --no-daemon :testClasses
           jar --create --file /tmp/simplecoins-probe.jar -C build/classes/java/test co/surumene/simplecoins/spike/GuardSmokeProbe.class -C /tmp/simplecoins-probe-descriptor plugin.yml
           test -s /tmp/simplecoins-probe.jar
+      - name: Compile synthetic healthy-then-failed journal provider (test only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/test/java/co/surumene/simplecoins/spike /tmp/fake-accounting-descriptor
+          cat > src/test/java/co/surumene/simplecoins/spike/FakeAccounting.java <<'JAVA'
+          package co.surumene.simplecoins.spike;
+
+          import co.surumene.simplecoins.guard.api.AdmissionPermit;
+          import org.bukkit.plugin.java.JavaPlugin;
+          import org.bukkit.plugin.ServicePriority;
+
+          /** Paper-only simulated service; NOT the real journal or settlement. */
+          public final class FakeAccounting extends JavaPlugin {
+              private volatile boolean live = true;
+
+              @Override public void onEnable() {
+                  getServer().getServicesManager().register(
+                          AdmissionPermit.class, () -> live, this, ServicePriority.Highest);
+                  getLogger().info("SYNTHETIC_READY_TRUE");
+                  getServer().getScheduler().runTaskLater(this, () -> {
+                      live = false;
+                      getLogger().warning("SYNTHETIC_JOURNAL_LOST");
+                  }, 60L);
+              }
+          }
+          JAVA
+          cat > /tmp/fake-accounting-descriptor/plugin.yml <<'YAML'
+          name: SimpleCoins
+          version: 0.0.0-health-probe
+          main: co.surumene.simplecoins.spike.FakeAccounting
+          api-version: '26.2'
+          load: POSTWORLD
+          depend:
+            - SimpleCoinsGuard
+          YAML
+          gradle --no-daemon :testClasses
+          jar --create --file /tmp/simplecoins-synthetic-accounting.jar -C build/classes/java/test co/surumene/simplecoins/spike/FakeAccounting.class -C /tmp/fake-accounting-descriptor plugin.yml
+          test -s /tmp/simplecoins-synthetic-accounting.jar
       - name: Fetch official Paper 26.2 build 134 and verify SHA256
         shell: bash
         run: |
@@ -194,6 +233,29 @@ jobs:
             grep -q 'Saving worlds' "$work/server.log"
           done
           echo "PROBE_ALL_THREE_PAPER_SCENARIOS_PASSED"
+          # Fourth scenario: verified healthy service then journal loss, WITHOUT another login.
+          work="/tmp/paper-proof/synthetic-journal-loss"
+          mkdir -p "$work/plugins"
+          cp /tmp/simplecoins-paper.jar "$work/paper.jar"
+          cp admission-guard/build/libs/admission-guard-1.0.0.jar "$work/plugins/SimpleCoinsGuard.jar"
+          cp /tmp/simplecoins-synthetic-accounting.jar "$work/plugins/SimpleCoins.jar"
+          echo eula=true > "$work/eula.txt"
+          printf 'online-mode=false\\nserver-ip=127.0.0.1\\nserver-port=25568\\nview-distance=2\\nsimulation-distance=2\\nmax-players=1\\n' > "$work/server.properties"
+          pushd "$work"
+          set +e
+          timeout --signal=TERM 120s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
+          rc=$?
+          set -e
+          popd
+          tail -n 55 "$work/server.log"
+          echo "PROBE_SYNTHETIC_JOURNAL_LOSS EXIT=$rc"
+          test "$rc" -eq 0
+          grep -q 'SYNTHETIC_READY_TRUE' "$work/server.log"
+          grep -q 'SYNTHETIC_JOURNAL_LOST' "$work/server.log"
+          grep -q 'Previously verified accounting admission lost health; stopping Paper' "$work/server.log"
+          grep -q 'Stopping server' "$work/server.log"
+          grep -q 'Saving worlds' "$work/server.log"
+          echo "PROBE_SYNTHETIC_JOURNAL_LOSS_PASSED"
       - name: Prepare user staging outputs
         if: success()
         shell: bash
@@ -202,7 +264,7 @@ jobs:
           mkdir -p /tmp/simplecoins-handoff/plugins /tmp/simplecoins-handoff/logs
           cp admission-guard/build/libs/admission-guard-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoinsGuard.jar
           cp build/libs/SimpleCoins-1.0.0.jar /tmp/simplecoins-handoff/plugins/SimpleCoins.jar
-          for scenario in main-missing main-disabled guard-disabled; do
+          for scenario in main-missing main-disabled guard-disabled synthetic-journal-loss; do
             cp "/tmp/paper-proof/$scenario/server.log" "/tmp/simplecoins-handoff/logs/$scenario.log"
           done
           (cd /tmp/simplecoins-handoff && sha256sum plugins/*.jar > sha256.txt)
