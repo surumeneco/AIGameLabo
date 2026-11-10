@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 65172f73e6cf8ff1a8cae40266c3da9f6053444f
+          ref: 00733de0e5159b4631a220e7ca545bcb531d265b
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "65172f73e6cf8ff1a8cae40266c3da9f6053444f"
+        run: test "$(git rev-parse HEAD)" = "00733de0e5159b4631a220e7ca545bcb531d265b"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -131,6 +131,14 @@ jobs:
                               matrix[i] = codec.create(formula.input(), 1);
                           if (!exchange.isApproved(registered, matrix))
                               throw new AssertionError("valid source rejected " + key);
+                          // Probe Paper's real native recipe resolver (not only
+                          // our manually constructed registration bookkeeping).
+                          Recipe resolved = Bukkit.getCraftingRecipe(
+                                  matrix, Bukkit.getWorlds().get(0));
+                          if (!(resolved instanceof org.bukkit.Keyed keyed)
+                                  || !keyed.getKey().equals(key))
+                              throw new AssertionError("Paper did not select exchange " + key
+                                      + "; got " + resolved);
                           ItemStack[] plain = matrix.clone();
                           plain[0] = new ItemStack(Material.PAPER);
                           if (exchange.isApproved(registered, plain))
