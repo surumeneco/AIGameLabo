@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 00733de0e5159b4631a220e7ca545bcb531d265b
+          ref: 9b0f5901fcdc54b6a3878af80cf5209b9a2b83b8
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "00733de0e5159b4631a220e7ca545bcb531d265b"
+        run: test "$(git rev-parse HEAD)" = "9b0f5901fcdc54b6a3878af80cf5209b9a2b83b8"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -139,6 +139,35 @@ jobs:
                                   || !keyed.getKey().equals(key))
                               throw new AssertionError("Paper did not select exchange " + key
                                       + "; got " + resolved);
+                          // Regression: pre-rename coins with the same PDC denomination
+                          // must resolve through Paper's native recipe matcher.
+                          ItemStack[] renamedMatrix = matrix.clone();
+                          ItemStack renamedSource = renamedMatrix[0].clone();
+                          ItemMeta renamedMeta = renamedSource.getItemMeta();
+                          renamedMeta.displayName(Component.text("Legacy label " + formula.id()));
+                          renamedSource.setItemMeta(renamedMeta);
+                          renamedMatrix[0] = renamedSource;
+                          if (!exchange.isApproved(registered, renamedMatrix))
+                              throw new AssertionError("renamed source rejected " + key);
+                          Recipe renamedResolved = Bukkit.getCraftingRecipe(
+                                  renamedMatrix, Bukkit.getWorlds().get(0));
+                          if (!(renamedResolved instanceof org.bukkit.Keyed renamedKeyed)
+                                  || !renamedKeyed.getKey().equals(key))
+                              throw new AssertionError("Paper rejected renamed source " + key
+                                      + "; got " + renamedResolved);
+                          ItemStack[] corruptMatrix = matrix.clone();
+                          ItemStack corruptSource = corruptMatrix[0].clone();
+                          ItemMeta corruptMeta = corruptSource.getItemMeta();
+                          corruptMeta.setItemModel(new NamespacedKey("simplecoins", "wrong_model"));
+                          corruptSource.setItemMeta(corruptMeta);
+                          corruptMatrix[0] = corruptSource;
+                          if (exchange.isApproved(registered, corruptMatrix))
+                              throw new AssertionError("malformed coin accepted " + key);
+                          Recipe corruptResolved = Bukkit.getCraftingRecipe(
+                                  corruptMatrix, Bukkit.getWorlds().get(0));
+                          if (corruptResolved instanceof org.bukkit.Keyed corruptKeyed
+                                  && corruptKeyed.getKey().equals(key))
+                              throw new AssertionError("Paper resolved malformed coin as exchange " + key);
                           ItemStack[] plain = matrix.clone();
                           plain[0] = new ItemStack(Material.PAPER);
                           if (exchange.isApproved(registered, plain))
