@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 5ea9cdca5675448273e834cb13f8e47aa21c3df8
+          ref: 0b3809109768fe93d940c9a03dca94ed42a2ca9c
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "5ea9cdca5675448273e834cb13f8e47aa21c3df8"
+        run: test "$(git rev-parse HEAD)" = "0b3809109768fe93d940c9a03dca94ed42a2ca9c"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -44,6 +44,8 @@ jobs:
           import co.surumene.simplecoins.domain.CoinExchangeFormula;
           import co.surumene.simplecoins.paper.CoinExchangeRecipes;
           import co.surumene.simplecoins.paper.TraderCoinStackMaterializer;
+          import co.surumene.simplecoins.paper.WanderingTraderDropConfigReader;
+          import org.bukkit.configuration.file.YamlConfiguration;
           import co.surumene.simplecoins.domain.WanderingTraderDropPolicy;
           import org.bukkit.inventory.ShapelessRecipe;
           import org.bukkit.inventory.Recipe;
@@ -137,6 +139,23 @@ jobs:
                           throw new AssertionError("oversized trader drop accepted");
                       } catch (IllegalArgumentException expectedError) { }
                       getLogger().info("COIN_TRADER_STACK_PREPARATION_PASSED count=2 value=" + sumValue);
+                      var yaml = new YamlConfiguration();
+                      yaml.set("trader-drops.enabled", true);
+                      yaml.set("trader-drops.probability", 1.0);
+                      yaml.set("trader-drops.min-count", 65);
+                      yaml.set("trader-drops.max-count", 65);
+                      yaml.set("trader-drops.max-stacks-per-event", 2);
+                      yaml.set("trader-drops.weights.100", 1);
+                      var loadedDrop = WanderingTraderDropConfigReader.read(yaml);
+                      var selected = loadedDrop.policy().draw(new java.util.Random(3)).orElseThrow();
+                      var fromConfig = TraderCoinStackMaterializer.prepare(
+                              selected, codec, loadedDrop.maxStacksPerEvent());
+                      if (selected.denomination() != CoinDenomination.HUNDRED
+                              || selected.count() != 65 || fromConfig.size() != 2
+                              || fromConfig.get(0).getAmount() != 64
+                              || fromConfig.get(1).getAmount() != 1)
+                          throw new AssertionError("trader config materialization mismatch");
+                      getLogger().info("COIN_TRADER_CONFIG_PAPER_PASSED count=65 stacks=2");
                       var exchange = new CoinExchangeRecipes(this, codec);
                       exchange.register();
                       if (exchange.registeredCount() != 20)
@@ -225,7 +244,7 @@ jobs:
           load: POSTWORLD
           YAML
           gradle --no-daemon testClasses
-          jar --create --file /tmp/coin-paper/plugins/CoinItemProbe.jar -C build/classes/java/main co/surumene/simplecoins/paper/CoinItemCodec.class -C build/classes/java/main co/surumene/simplecoins/paper/CoinExchangeRecipes.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinDenomination.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinExchangeFormula.class -C build/classes/java/main co/surumene/simplecoins/domain/WanderingTraderDropPolicy.class -C build/classes/java/main 'co/surumene/simplecoins/domain/WanderingTraderDropPolicy$Drop.class' -C build/classes/java/main co/surumene/simplecoins/domain/TraderDropStackPlan.class -C build/classes/java/main co/surumene/simplecoins/paper/TraderCoinStackMaterializer.class -C build/classes/java/test co/surumene/simplecoins/spike/CoinItemSmokeProbe.class -C /tmp/coin-probe-descriptor plugin.yml
+          jar --create --file /tmp/coin-paper/plugins/CoinItemProbe.jar -C build/classes/java/main co/surumene/simplecoins/paper/CoinItemCodec.class -C build/classes/java/main co/surumene/simplecoins/paper/CoinExchangeRecipes.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinDenomination.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinExchangeFormula.class -C build/classes/java/main co/surumene/simplecoins/domain/WanderingTraderDropPolicy.class -C build/classes/java/main 'co/surumene/simplecoins/domain/WanderingTraderDropPolicy$Drop.class' -C build/classes/java/main co/surumene/simplecoins/domain/TraderDropStackPlan.class -C build/classes/java/main co/surumene/simplecoins/paper/TraderCoinStackMaterializer.class -C build/classes/java/main co/surumene/simplecoins/paper/WanderingTraderDropConfigReader.class -C build/classes/java/main 'co/surumene/simplecoins/paper/WanderingTraderDropConfigReader$Loaded.class' -C build/classes/java/test co/surumene/simplecoins/spike/CoinItemSmokeProbe.class -C /tmp/coin-probe-descriptor plugin.yml
           test -s /tmp/coin-paper/plugins/CoinItemProbe.jar
       - name: Fetch pinned official Paper 26.2 build 134
         shell: bash
@@ -255,6 +274,7 @@ jobs:
           if grep -q 'COIN_PAPER_PROBE_FAILED' server.log; then exit 1; fi
           grep -q 'COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=9' server.log
           grep -q 'COIN_TRADER_STACK_PREPARATION_PASSED count=2 value=6500' server.log
+          grep -q 'COIN_TRADER_CONFIG_PAPER_PASSED count=65 stacks=2' server.log
           grep -q 'COIN_PAPER_TWENTY_RECIPES_REGISTERED_PASSED count=20' server.log
           grep -q 'Stopping server' server.log
           grep -q 'Saving worlds' server.log
