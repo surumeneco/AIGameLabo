@@ -1,0 +1,174 @@
+name: Isolated SimpleCoins physical coin Paper 26.2 verification
+on:
+  push:
+    branches:
+      - infra/chat-simplecoins-coin-item-paper-20261110
+permissions:
+  contents: read
+jobs:
+  paper-coin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact SimpleCoins candidate
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: d278778a5df9f344192326106e6d3cad1634eeb2
+          persist-credentials: false
+      - name: Verify exact immutable product source
+        run: test "$(git rev-parse HEAD)" = "d278778a5df9f344192326106e6d3cad1634eeb2"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Build source and run existing tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean test jar
+          test -s build/libs/SimpleCoins-1.0.0.jar
+      - name: Build temporary runtime assertion plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/test/java/co/surumene/simplecoins/spike /tmp/coin-probe-descriptor /tmp/coin-paper/plugins
+          cat > src/test/java/co/surumene/simplecoins/spike/CoinItemSmokeProbe.java <<'JAVA'
+          package co.surumene.simplecoins.spike;
+
+          import co.surumene.simplecoins.paper.CoinItemCodec;
+          import co.surumene.simplecoins.domain.CoinDenomination;
+          import org.bukkit.Bukkit;
+          import org.bukkit.Material;
+          import org.bukkit.NamespacedKey;
+          import org.bukkit.inventory.ItemStack;
+          import org.bukkit.inventory.meta.ItemMeta;
+          import org.bukkit.persistence.PersistentDataType;
+          import org.bukkit.plugin.java.JavaPlugin;
+          import net.kyori.adventure.text.Component;
+          import java.util.EnumMap;
+
+          public final class CoinItemSmokeProbe extends JavaPlugin {
+              @Override public void onEnable() {
+                  getServer().getScheduler().runTaskLater(this, this::verifyAndStop, 5L);
+              }
+              private void verifyAndStop() {
+                  try {
+                      var codec = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      int inspected = 0;
+                      for (CoinDenomination d : CoinDenomination.values()) {
+                          ItemStack one = codec.create(d, 1);
+                          ItemStack full = codec.create(d, 64);
+                          if (one.getType() != Material.PAPER || full.getAmount() != 64)
+                              throw new AssertionError("wrong material or count " + d);
+                          ItemMeta meta = one.getItemMeta();
+                          if (meta == null
+                                  || !Integer.valueOf(d.value()).equals(meta.getPersistentDataContainer().get(
+                                      CoinItemCodec.DENOMINATION_KEY, PersistentDataType.INTEGER))
+                                  || !CoinItemCodec.modelKey(d).equals(meta.getItemModel()))
+                              throw new AssertionError("PDC/model invalid " + d);
+                          if (codec.identify(one).orElseThrow() != d
+                                  || codec.identify(full).orElseThrow() != d)
+                              throw new AssertionError("round trip invalid " + d);
+                          ItemStack renamed = one.clone();
+                          ItemMeta renamedMeta = renamed.getItemMeta();
+                          renamedMeta.displayName(Component.text("Alternate label " + d.value()));
+                          renamed.setItemMeta(renamedMeta);
+                          if (codec.identify(renamed).orElseThrow() != d)
+                              throw new AssertionError("label changed value " + d);
+
+                          ItemStack corruptModel = one.clone();
+                          ItemMeta wrongModel = corruptModel.getItemMeta();
+                          wrongModel.setItemModel(new NamespacedKey("simplecoins", "incorrect"));
+                          corruptModel.setItemMeta(wrongModel);
+                          expectReject(codec, corruptModel, "wrong model");
+
+                          ItemStack corruptPdc = one.clone();
+                          ItemMeta wrongPdc = corruptPdc.getItemMeta();
+                          wrongPdc.getPersistentDataContainer().set(
+                                  CoinItemCodec.DENOMINATION_KEY, PersistentDataType.INTEGER, 999);
+                          corruptPdc.setItemMeta(wrongPdc);
+                          expectReject(codec, corruptPdc, "invalid PDC");
+                          inspected++;
+                      }
+                      if (inspected != 9 || codec.identify(new ItemStack(Material.PAPER)).isPresent())
+                          throw new AssertionError("ordinary paper became coin");
+                      var named = new EnumMap<>(CoinItemCodec.defaultNames());
+                      named.put(CoinDenomination.ONE, "新しい通貨名");
+                      if (new CoinItemCodec(named).identify(
+                              codec.create(CoinDenomination.ONE, 1)).orElseThrow() != CoinDenomination.ONE)
+                          throw new AssertionError("config names affected identity");
+                      if (!codec.hasCoinMarker(codec.create(CoinDenomination.ONE, 1)))
+                          throw new AssertionError("marker not recognizable");
+                      try { codec.create(CoinDenomination.ONE, 65); throw new AssertionError("stack >64 allowed"); }
+                      catch (IllegalArgumentException expected) { }
+                      try { codec.create(CoinDenomination.ONE, 0); throw new AssertionError("stack 0 allowed"); }
+                      catch (IllegalArgumentException expected) { }
+                      getLogger().info("COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=" + inspected);
+                  } catch (Throwable fail) {
+                      getLogger().severe("COIN_PAPER_PROBE_FAILED " + fail);
+                  } finally {
+                      Bukkit.shutdown();
+                  }
+              }
+              private static void expectReject(CoinItemCodec codec, ItemStack stack, String reason) {
+                  try {
+                      codec.identify(stack);
+                      throw new AssertionError("accepted corrupt " + reason);
+                  } catch (IllegalStateException ok) { }
+              }
+          }
+          JAVA
+          cat > /tmp/coin-probe-descriptor/plugin.yml <<'YAML'
+          name: SimpleCoinsCoinItemProbe
+          version: 0.0.1-test
+          main: co.surumene.simplecoins.spike.CoinItemSmokeProbe
+          api-version: '26.2'
+          load: POSTWORLD
+          YAML
+          gradle --no-daemon testClasses
+          jar --create --file /tmp/coin-paper/plugins/CoinItemProbe.jar -C build/classes/java/main co/surumene/simplecoins/paper/CoinItemCodec.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinDenomination.class -C build/classes/java/test co/surumene/simplecoins/spike/CoinItemSmokeProbe.class -C /tmp/coin-probe-descriptor plugin.yml
+          test -s /tmp/coin-paper/plugins/CoinItemProbe.jar
+      - name: Fetch pinned official Paper 26.2 build 134
+        shell: bash
+        run: |
+          set -euo pipefail
+          builds="$(curl --fail --silent --show-error --location --retry 3 https://fill.papermc.io/v3/projects/paper/versions/26.2/builds)"
+          url="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".url' | head -1)"
+          digest="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".checksums.sha256' | head -1)"
+          test -n "$url" && test "$url" != "null"
+          test -n "$digest" && test "$digest" != "null"
+          curl --fail --silent --show-error --location --retry 3 "$url" --output /tmp/coin-paper/paper.jar
+          (cd /tmp/coin-paper && echo "$digest  paper.jar" | sha256sum --check -)
+          echo "COIN_PAPER_PINNED_SHA=$digest"
+      - name: Start isolated Paper and validate live ItemStack PDC round trips
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/coin-paper
+          echo 'eula=true' > eula.txt
+          printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25569\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > server.properties
+          set +e
+          timeout --signal=TERM 140s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
+          rc="$?"
+          set -e
+          tail -n 80 server.log
+          test "$rc" -eq 0
+          if grep -q 'COIN_PAPER_PROBE_FAILED' server.log; then exit 1; fi
+          grep -q 'COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=9' server.log
+          grep -q 'Stopping server' server.log
+          grep -q 'Saving worlds' server.log
+          echo 'COIN_PAPER_26_2_INTEGRATION_SUCCESS'
+      - name: Upload verification logs and isolated probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-coinitem-paper26.2
+          path: |
+            /tmp/coin-paper/server.log
+            /tmp/coin-paper/plugins/CoinItemProbe.jar
+          if-no-files-found: warn
+          retention-days: 7
