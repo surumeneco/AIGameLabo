@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: a9e85074e414652b758cb2bd8301c1ffcfae6517
+          ref: 736391100cea20b41ee766ddaf63da2aaa500a6e
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "a9e85074e414652b758cb2bd8301c1ffcfae6517"
+        run: test "$(git rev-parse HEAD)" = "736391100cea20b41ee766ddaf63da2aaa500a6e"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,6 +43,8 @@ jobs:
           import co.surumene.simplecoins.domain.CoinDenomination;
           import co.surumene.simplecoins.domain.CoinExchangeFormula;
           import co.surumene.simplecoins.paper.CoinExchangeRecipes;
+          import co.surumene.simplecoins.paper.TraderCoinStackMaterializer;
+          import co.surumene.simplecoins.domain.WanderingTraderDropPolicy;
           import org.bukkit.inventory.ShapelessRecipe;
           import org.bukkit.inventory.Recipe;
           import org.bukkit.Bukkit;
@@ -112,6 +114,29 @@ jobs:
                       try { codec.create(CoinDenomination.ONE, 0); throw new AssertionError("stack 0 allowed"); }
                       catch (IllegalArgumentException expected) { }
                       getLogger().info("COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=" + inspected);
+                      var split = TraderCoinStackMaterializer.prepare(
+                              new WanderingTraderDropPolicy.Drop(CoinDenomination.HUNDRED, 65), codec, 2);
+                      if (split.size() != 2 || split.get(0).getAmount() != 64
+                              || split.get(1).getAmount() != 1)
+                          throw new AssertionError("trader stack split 65 failed");
+                      long sumValue = 0;
+                      for (ItemStack stack : split) {
+                          if (codec.identify(stack).orElseThrow() != CoinDenomination.HUNDRED)
+                              throw new AssertionError("wrong split denomination");
+                          sumValue += (long) stack.getAmount() * 100L;
+                      }
+                      if (sumValue != 6500L) throw new AssertionError("trader split lost value");
+                      try {
+                          TraderCoinStackMaterializer.prepare(
+                                  new WanderingTraderDropPolicy.Drop(CoinDenomination.HUNDRED, 65), codec, 1);
+                          throw new AssertionError("insufficient stack budget accepted");
+                      } catch (IllegalArgumentException expectedError) { }
+                      try {
+                          TraderCoinStackMaterializer.prepare(
+                                  new WanderingTraderDropPolicy.Drop(CoinDenomination.HUNDRED, 65537), codec, 1024);
+                          throw new AssertionError("oversized trader drop accepted");
+                      } catch (IllegalArgumentException expectedError) { }
+                      getLogger().info("COIN_TRADER_STACK_PREPARATION_PASSED count=2 value=" + sumValue);
                       var exchange = new CoinExchangeRecipes(this, codec);
                       exchange.register();
                       if (exchange.registeredCount() != 20)
@@ -200,7 +225,7 @@ jobs:
           load: POSTWORLD
           YAML
           gradle --no-daemon testClasses
-          jar --create --file /tmp/coin-paper/plugins/CoinItemProbe.jar -C build/classes/java/main co/surumene/simplecoins/paper/CoinItemCodec.class -C build/classes/java/main co/surumene/simplecoins/paper/CoinExchangeRecipes.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinDenomination.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinExchangeFormula.class -C build/classes/java/test co/surumene/simplecoins/spike/CoinItemSmokeProbe.class -C /tmp/coin-probe-descriptor plugin.yml
+          jar --create --file /tmp/coin-paper/plugins/CoinItemProbe.jar -C build/classes/java/main co/surumene/simplecoins/paper/CoinItemCodec.class -C build/classes/java/main co/surumene/simplecoins/paper/CoinExchangeRecipes.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinDenomination.class -C build/classes/java/main co/surumene/simplecoins/domain/CoinExchangeFormula.class -C build/classes/java/main co/surumene/simplecoins/domain/WanderingTraderDropPolicy.class -C build/classes/java/main 'co/surumene/simplecoins/domain/WanderingTraderDropPolicy$Drop.class' -C build/classes/java/main co/surumene/simplecoins/domain/TraderDropStackPlan.class -C build/classes/java/main co/surumene/simplecoins/paper/TraderCoinStackMaterializer.class -C build/classes/java/test co/surumene/simplecoins/spike/CoinItemSmokeProbe.class -C /tmp/coin-probe-descriptor plugin.yml
           test -s /tmp/coin-paper/plugins/CoinItemProbe.jar
       - name: Fetch pinned official Paper 26.2 build 134
         shell: bash
@@ -229,6 +254,7 @@ jobs:
           test "$rc" -eq 0
           if grep -q 'COIN_PAPER_PROBE_FAILED' server.log; then exit 1; fi
           grep -q 'COIN_PAPER_NINE_DENOM_ROUNDTRIP_PASSED count=9' server.log
+          grep -q 'COIN_TRADER_STACK_PREPARATION_PASSED count=2 value=6500' server.log
           grep -q 'COIN_PAPER_TWENTY_RECIPES_REGISTERED_PASSED count=20' server.log
           grep -q 'Stopping server' server.log
           grep -q 'Saving worlds' server.log
