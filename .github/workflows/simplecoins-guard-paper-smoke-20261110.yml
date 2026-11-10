@@ -240,7 +240,7 @@ jobs:
           cp admission-guard/build/libs/admission-guard-1.0.0.jar "$work/plugins/SimpleCoinsGuard.jar"
           cp /tmp/simplecoins-synthetic-accounting.jar "$work/plugins/SimpleCoins.jar"
           echo eula=true > "$work/eula.txt"
-          printf 'online-mode=false\\nserver-ip=127.0.0.1\\nserver-port=25568\\nview-distance=2\\nsimulation-distance=2\\nmax-players=1\\n' > "$work/server.properties"
+          printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25568\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > "$work/server.properties"
           pushd "$work"
           set +e
           timeout --signal=TERM 120s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
