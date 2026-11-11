@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 69726bd1dfe3f8b400289769f0b6051d2a6375b7
+          ref: 6e0e9a102720b9276d77319929c969d5cdb2f835
           persist-credentials: false
       - name: Verify exact immutable product source
-        run: test "$(git rev-parse HEAD)" = "69726bd1dfe3f8b400289769f0b6051d2a6375b7"
+        run: test "$(git rev-parse HEAD)" = "6e0e9a102720b9276d77319929c969d5cdb2f835"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -310,6 +310,11 @@ jobs:
                           plain[0] = new ItemStack(Material.PAPER);
                           if (exchange.isApproved(registered, plain))
                               throw new AssertionError("vanilla paper accepted " + key);
+                          ItemStack[] zero = matrix.clone();
+                          zero[0] = zero[0].clone();
+                          zero[0].setAmount(0);
+                          if (exchange.isApproved(registered, zero))
+                              throw new AssertionError("zero-count currency input accepted " + key);
                           verifiedRecipes++;
                       }
                       if (verifiedRecipes != 20)
