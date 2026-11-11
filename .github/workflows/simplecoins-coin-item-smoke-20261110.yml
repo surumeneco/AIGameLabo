@@ -61,6 +61,9 @@ jobs:
           import org.bukkit.damage.DamageType;
           import org.bukkit.entity.EntityType;
           import org.bukkit.entity.WanderingTrader;
+          import org.bukkit.block.Crafter;
+          import org.bukkit.event.block.CrafterCraftEvent;
+          import org.bukkit.inventory.CraftingRecipe;
           import org.bukkit.configuration.file.YamlConfiguration;
           import co.surumene.simplecoins.domain.WanderingTraderDropPolicy;
           import org.bukkit.inventory.ShapelessRecipe;
@@ -311,6 +314,54 @@ jobs:
                       }
                       if (verifiedRecipes != 20)
                           throw new AssertionError("incomplete recipe verification");
+                      // Real Paper block/CrafterInventory plus direct event adapter:
+                      // the handler must permit a value-equivalent registered recipe
+                      // even with 64 stacked coins and reject unrelated paper recipes.
+                      var world = Bukkit.getWorlds().get(0);
+                      var crafterBlock = world.getBlockAt(
+                              world.getSpawnLocation().getBlockX() + 5,
+                              world.getSpawnLocation().getBlockY() + 3,
+                              world.getSpawnLocation().getBlockZ() + 5);
+                      var previousBlock = crafterBlock.getBlockData().clone();
+                      try {
+                          crafterBlock.setType(Material.CRAFTER);
+                          var crafter = (Crafter) crafterBlock.getState();
+                          var ci = crafter.getInventory();
+                          ci.clear();
+                          var conversion = CoinExchangeFormula.all().get(0);
+                          var registeredCraft = (CraftingRecipe) Bukkit.getRecipe(
+                                  new NamespacedKey(this, "exchange_" + conversion.id()));
+                          if (registeredCraft == null)
+                              throw new AssertionError("missing Paper registered crafting recipe");
+                          for (int index = 0; index < conversion.inputCount(); index++)
+                              ci.setItem(index, codec.create(conversion.input(), 64));
+                          var allowed = new CrafterCraftEvent(crafterBlock,
+                                  registeredCraft, registeredCraft.getResult(), java.util.List.of());
+                          exchange.onCrafter(allowed);
+                          if (allowed.isCancelled())
+                              throw new AssertionError("value-neutral crafter exchange was blocked");
+                          ci.clear();
+                          ci.setItem(0, codec.create(CoinDenomination.ONE, 1));
+                          var unrelated = new ShapelessRecipe(
+                                  new NamespacedKey(this, "unrelated_paper"),
+                                  new ItemStack(Material.MAP));
+                          unrelated.addIngredient(Material.PAPER);
+                          var denied = new CrafterCraftEvent(crafterBlock,
+                                  unrelated, new ItemStack(Material.MAP), java.util.List.of());
+                          exchange.onCrafter(denied);
+                          if (!denied.isCancelled())
+                              throw new AssertionError("crafter consumed a currency PAPER as vanilla paper");
+                          ci.clear();
+                          ci.setItem(0, new ItemStack(Material.PAPER, 1));
+                          var ordinary = new CrafterCraftEvent(crafterBlock,
+                                  unrelated, new ItemStack(Material.MAP), java.util.List.of());
+                          exchange.onCrafter(ordinary);
+                          if (ordinary.isCancelled())
+                              throw new AssertionError("ordinary PAPER wrongly blocked in crafter");
+                      } finally {
+                          crafterBlock.setBlockData(previousBlock, false);
+                      }
+                      getLogger().info("COIN_CRAFTER_EVENT_GUARD_PASSED");
                       exchange.unregister();
                       getLogger().info("COIN_PAPER_TWENTY_RECIPES_REGISTERED_PASSED count=" + verifiedRecipes);
                   } catch (Throwable fail) {
@@ -370,6 +421,7 @@ jobs:
           grep -q 'COIN_TRADER_DEATH_RECEIPT_PASSED stacks=2 value=6500 startup=quarantined' server.log
           grep -q 'COIN_PAPER_TWENTY_RECIPES_REGISTERED_PASSED count=20' server.log
           grep -q 'COIN_NONCRAFT_PAPER_GUARD_PASSED' server.log
+          grep -q 'COIN_CRAFTER_EVENT_GUARD_PASSED' server.log
           grep -q 'Stopping server' server.log
           grep -q 'Saving worlds' server.log
           echo 'COIN_PAPER_26_2_INTEGRATION_SUCCESS'
