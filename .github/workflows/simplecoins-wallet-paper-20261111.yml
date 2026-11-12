@@ -363,6 +363,29 @@ jobs:
           grep -q 'Stopping server' server.log
           grep -q 'Saving worlds' server.log
           echo 'INTEGRATION_PAPER_26_2_BOOT_SUCCESS'
+      - name: Reject corrupt durable journal at real Paper startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/sc-integration
+          head=plugins/SimpleCoins/normal-mutations/head
+          test -f "$head"
+          # Simulate damage to the durable accounting state between restarts.
+          printf 'malformed-checksummed-head' > "$head"
+          set +e
+          (sleep 24; echo stop) | timeout --signal=TERM 80s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server-corrupt.log 2>&1
+          rc="$?"
+          set -e
+          tail -n 75 server-corrupt.log
+          test "$rc" -ne 124
+          grep -q 'Cannot initialize durable normal monetary journal' server-corrupt.log
+          grep -q 'Failed to register admission protection' server-corrupt.log
+          grep -q 'Stopping server' server-corrupt.log
+          if grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED' server-corrupt.log; then
+            echo 'Probe should never enable against corrupted journal' >&2
+            exit 1
+          fi
+          echo 'INTEGRATION_CORRUPT_JOURNAL_FAIL_CLOSED_PASSED'
       - name: Upload Paper probe and test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -370,6 +393,7 @@ jobs:
           name: simplecoins-guard-coin-paper
           path: |
             /tmp/sc-integration/server.log
+            /tmp/sc-integration/server-corrupt.log
             /tmp/sc-integration/plugins/
             build/test-results/test/
             admission-guard/build/test-results/test/
