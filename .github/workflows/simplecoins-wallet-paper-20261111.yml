@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: c5232118017ce6a54e2e196f95d272a445f4a8c9
+          ref: fbc0616ea33a4753c6ccd42df48855c3e870a358
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "c5232118017ce6a54e2e196f95d272a445f4a8c9"
+          test "$(git rev-parse HEAD)" = "fbc0616ea33a4753c6ccd42df48855c3e870a358"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -103,7 +103,8 @@ jobs:
                           UUID.fromString("00000000-0000-0000-0000-000000000123"), "C");
                       ItemStack wallet = codec.create();
                       var original = codec.read(wallet).orElseThrow();
-                      if (wallet.getAmount() != 1 || original.balance() != 0)
+                      if (wallet.getAmount() != 1 || original.balance() != 0
+                              || wallet.getMaxStackSize() != 1)
                           throw new AssertionError("new wallet invalid");
                       ItemStack loaded = ItemStack.deserializeBytes(wallet.serializeAsBytes());
                       if (!codec.read(loaded).orElseThrow().equals(original))
@@ -152,8 +153,9 @@ jobs:
                       var modifiable = overstackable.getItemMeta();
                       modifiable.setMaxStackSize(64);
                       overstackable.setItemMeta(modifiable);
-                      if (!codec.hasWalletMarker(overstackable))
-                          throw new AssertionError("max-stack fixture lost its wallet PDC");
+                      if (!codec.hasWalletMarker(overstackable)
+                              || overstackable.getMaxStackSize() != 64)
+                          throw new AssertionError("max-stack fixture did not produce a stackable wallet");
                       boolean rejectsStack = false;
                       try { codec.read(overstackable); }
                       catch (IllegalStateException invalidCap) { rejectsStack = true; }
