@@ -75,12 +75,13 @@ jobs:
                       throws java.io.IOException {
                   byte[] bytes = item.serializeAsBytes();
                   if (bytes.length < 2) throw new java.io.IOException("Truncated Paper item serialization");
-                  java.io.InputStream stream = new ByteArrayInputStream(bytes);
+                  java.io.InputStream raw = new ByteArrayInputStream(bytes);
                   // Paper's ItemStack serialization may be GZIP-framed NBT.
-                  if ((bytes[0] & 255) == 0x1f && (bytes[1] & 255) == 0x8b)
-                      stream = new java.util.zip.GZIPInputStream(stream);
-                  try (stream) {
-                      return NbtReader.read(stream, 1048576);
+                  java.io.InputStream decoded = ((bytes[0] & 255) == 0x1f
+                          && (bytes[1] & 255) == 0x8b)
+                      ? new java.util.zip.GZIPInputStream(raw) : raw;
+                  try (decoded) {
+                      return NbtReader.read(decoded, 1048576);
                   }
               }
               @Override public void onEnable() {
