@@ -1,4 +1,4 @@
-name: SimpleCoins isolated saved-global-wallet regression JDK25
+name: SimpleCoins saved-wallet + Player holder exclusion JDK25
 on:
   push:
     branches:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: f32dc916ca3b139843819f3d6b85a6c2fa75d2a6
+          ref: db67a90c585d321694a141f2f0bdce114520e78b
           persist-credentials: false
       - name: Ensure immutable exact source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "f32dc916ca3b139843819f3d6b85a6c2fa75d2a6"
+          test "$(git rev-parse HEAD)" = "db67a90c585d321694a141f2f0bdce114520e78b"
           mkdir -p /tmp/sc-regression
           git rev-parse HEAD > /tmp/sc-regression/commit.txt
           git rev-parse HEAD^{tree} > /tmp/sc-regression/root-tree.txt
