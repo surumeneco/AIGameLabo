@@ -58,7 +58,11 @@ jobs:
           import co.surumene.simplecoins.paper.WalletMenu;
           import co.surumene.simplecoins.paper.CoinItemCodec;
           import co.surumene.simplecoins.domain.CoinDenomination;
+          import co.surumene.simplecoins.domain.CoinExchangeFormula;
           import co.surumene.simplecoins.domain.StoredItemValue;
+          import org.bukkit.inventory.RecipeChoice;
+          import org.bukkit.inventory.ShapelessRecipe;
+          import java.util.EnumMap;
           import co.surumene.simplecoins.domain.NbtReader;
           import java.io.ByteArrayInputStream;
           import java.math.BigInteger;
@@ -107,6 +111,41 @@ jobs:
                       }
                       if (count != 20) throw new AssertionError("expected 20 recipes, found " + count);
                       getLogger().info("INTEGRATION_RECIPE_COUNT_PASSED count=" + count);
+                      // Verify all registered real recipe choices, not merely that keys exist.
+                      var fullCodec = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      int validated = 0;
+                      for (CoinExchangeFormula formula : CoinExchangeFormula.all()) {
+                          var key = new NamespacedKey(main, "exchange_" + formula.id());
+                          var resolved = Bukkit.getRecipe(key);
+                          if (!(resolved instanceof ShapelessRecipe shapeless))
+                              throw new AssertionError("Missing shapeless registered exchange: " + key);
+                          if (shapeless.getChoiceList().size() != formula.inputCount())
+                              throw new AssertionError("Wrong ingredient count: " + key);
+                          var expectedCoin = fullCodec.create(formula.input(), 1);
+                          var reconfiguredNames = new EnumMap<CoinDenomination, String>(CoinDenomination.class);
+                          reconfiguredNames.putAll(CoinItemCodec.defaultNames());
+                          reconfiguredNames.put(formula.input(), "Renamed " + formula.input().value());
+                          var renamedCoin = new CoinItemCodec(reconfiguredNames).create(formula.input(), 1);
+                          var invalidCoin = expectedCoin.clone();
+                          var invalidMeta = invalidCoin.getItemMeta();
+                          invalidMeta.setItemModel(new NamespacedKey("simplecoins", "coin_9999"));
+                          invalidCoin.setItemMeta(invalidMeta);
+                          for (RecipeChoice choice : shapeless.getChoiceList()) {
+                              if (!choice.test(expectedCoin) || !choice.test(renamedCoin))
+                                  throw new AssertionError("Genuine/renamed coin was rejected: " + key);
+                              if (choice.test(new ItemStack(Material.PAPER, 1)) || choice.test(invalidCoin))
+                                  throw new AssertionError("Normal or counterfeit paper accepted: " + key);
+                          }
+                          var output = shapeless.getResult();
+                          if (fullCodec.identify(output).orElseThrow() != formula.output()
+                                  || output.getAmount() != formula.outputCount()
+                                  || formula.totalValue() != (long) formula.outputCount()
+                                      * formula.output().value())
+                              throw new AssertionError("Exchange loses or duplicates value: " + key);
+                          validated++;
+                      }
+                      if (validated != 20) throw new AssertionError("Exchange matrix incomplete");
+                      getLogger().info("INTEGRATION_RECIPE_PREDICATES_PASSED count=" + validated);
                       var config = main.getConfig();
                       if (!config.getBoolean("trader-drops.enabled") || config.getDouble("trader-drops.chance") != 0.5)
                           throw new AssertionError("approved default drop probability not loaded");
@@ -291,6 +330,7 @@ jobs:
           if grep -q 'Error occurred while enabling' server.log; then exit 1; fi
           grep -q 'INTEGRATION_ADMISSION_CLOSED_PASSED' server.log
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
+          grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
           grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5' server.log
           grep -q 'INTEGRATION_WALLET_PDC_PASSED' server.log
           grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
