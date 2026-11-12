@@ -351,8 +351,12 @@ jobs:
                               }
                               if (!rejectedCloned)
                                   throw new AssertionError("Cross-chunk cloned wallet was accepted");
+                              // Prior deterministic test codec always uses the
+                              // same UUID. Use fresh UUIDs for a truly distinct
+                              // second wallet after testing the cloned failure.
+                              var distinctCodec = new WalletItemCodec(UUID::randomUUID, "C");
                               secondChest.getBlockInventory().setItem(0,
-                                  codec.withBalance(codec.create(), 250L));
+                                  distinctCodec.withBalance(distinctCodec.create(), 250L));
                               var worldReport = PaperLoadedWorldAssets.scan(liveWorld,
                                   10000, 100000, 100000, 1000000, 1048576, 1048576);
                               String firstKey = "world/" + liveWorld.getName() + "/"
