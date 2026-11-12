@@ -292,13 +292,13 @@ jobs:
                               throw new AssertionError("Per-source value and coverage differ");
                           boolean firstSource = false, secondSource = false;
                           for (var source : detail.sources()) {
-                              if (source instanceof HybridLiveSourceStage.ChunkSource loaded) {
-                                  if (loaded.chunk().world().equals(firstWorld.getName())
-                                      && loaded.values().stream().anyMatch(value ->
+                              if (source instanceof HybridLiveSourceStage.ChunkSource sourceChunk) {
+                                  if (sourceChunk.chunk().world().equals(firstWorld.getName())
+                                      && sourceChunk.values().stream().anyMatch(value ->
                                           value.amount().equals(BigInteger.valueOf(800L))))
                                       firstSource = true;
-                                  if (loaded.chunk().world().equals(secondWorld.getName())
-                                      && loaded.values().stream().anyMatch(value ->
+                                  if (sourceChunk.chunk().world().equals(secondWorld.getName())
+                                      && sourceChunk.values().stream().anyMatch(value ->
                                           value.amount().equals(BigInteger.valueOf(300L))))
                                       secondSource = true;
                               }
