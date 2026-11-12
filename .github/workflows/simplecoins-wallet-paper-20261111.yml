@@ -344,10 +344,10 @@ jobs:
                               try {
                                   PaperLoadedWorldAssets.scan(liveWorld,
                                       10000, 100000, 100000, 1000000, 1048576, 1048576);
-                              } catch (IOException expected) {
-                                  rejectedCloned = expected.getMessage() != null
-                                      && expected.getMessage().contains("Duplicate physical wallet UUID");
-                                  if (!rejectedCloned) throw expected;
+                              } catch (IOException duplicateFault) {
+                                  rejectedCloned = duplicateFault.getMessage() != null
+                                      && duplicateFault.getMessage().contains("Duplicate physical wallet UUID");
+                                  if (!rejectedCloned) throw duplicateFault;
                               }
                               if (!rejectedCloned)
                                   throw new AssertionError("Cross-chunk cloned wallet was accepted");
@@ -372,7 +372,7 @@ jobs:
                               try {
                                   PaperLoadedWorldAssets.scan(liveWorld,
                                       1, 100000, 100000, 1000000, 1048576, 1048576);
-                              } catch (IOException expected) { chunkBudgetRejected = true; }
+                              } catch (IOException budgetFault) { chunkBudgetRejected = true; }
                               if (!chunkBudgetRejected)
                                   throw new AssertionError("Loaded-world chunk budget was ignored");
                               getLogger().info("INTEGRATION_LOADED_WORLD_WALLET_IDENTITY_PASSED chunks="
