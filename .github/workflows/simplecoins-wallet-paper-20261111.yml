@@ -56,6 +56,12 @@ jobs:
           import org.bukkit.plugin.java.JavaPlugin;
           import co.surumene.simplecoins.paper.WalletItemCodec;
           import co.surumene.simplecoins.paper.WalletMenu;
+          import co.surumene.simplecoins.paper.CoinItemCodec;
+          import co.surumene.simplecoins.domain.CoinDenomination;
+          import co.surumene.simplecoins.domain.StoredItemValue;
+          import co.surumene.simplecoins.domain.NbtReader;
+          import java.io.ByteArrayInputStream;
+          import java.math.BigInteger;
           import org.bukkit.inventory.meta.BundleMeta;
           import org.bukkit.event.EventHandler;
           import org.bukkit.event.inventory.InventoryClickEvent;
@@ -125,6 +131,35 @@ jobs:
                       catch (IllegalStateException expectedException) { rejected = true; }
                       if (!rejected) throw new AssertionError("reduced cap accepted deposit");
                       getLogger().info("INTEGRATION_WALLET_PDC_PASSED");
+                      // Prove the saved-value reader accepts *actual* Paper ItemStack
+                      // serialization, not only hand-authored PDC/NBT test maps.
+                      var physicalCoins = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      for (int face : faces) {
+                          ItemStack stack = physicalCoins.create(CoinDenomination.fromValue(face), 3);
+                          var serialized = stack.serializeAsBytes();
+                          var nbt = NbtReader.read(new ByteArrayInputStream(serialized), 1048576);
+                          BigInteger observed = StoredItemValue.value(nbt);
+                          if (!observed.equals(BigInteger.valueOf((long) face * 3L)))
+                              throw new AssertionError("Saved coin mismatch: " + face + " expected="
+                                  + (face * 3L) + " actual=" + observed);
+                      }
+                      ItemStack balanceWallet = codec.withBalance(codec.create(), 640000L);
+                      var savedWallet = NbtReader.read(
+                          new ByteArrayInputStream(balanceWallet.serializeAsBytes()), 1048576);
+                      if (!StoredItemValue.value(savedWallet).equals(BigInteger.valueOf(640000L)))
+                          throw new AssertionError("Saved wallet PDC balance mismatch");
+                      ItemStack counterfeit = physicalCoins.create(CoinDenomination.HUNDRED, 1);
+                      var counterfeitMeta = counterfeit.getItemMeta();
+                      counterfeitMeta.setItemModel(new NamespacedKey("simplecoins", "coin_500"));
+                      counterfeit.setItemMeta(counterfeitMeta);
+                      var badSaved = NbtReader.read(
+                          new ByteArrayInputStream(counterfeit.serializeAsBytes()), 1048576);
+                      boolean invalidSavedRejected = false;
+                      try { StoredItemValue.value(badSaved); }
+                      catch (java.io.IOException malformed) { invalidSavedRejected = true; }
+                      if (!invalidSavedRejected)
+                          throw new AssertionError("Corrupt Paper item_model bypassed saved-value guard");
+                      getLogger().info("INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000");
                       ItemStack hidden = colored.clone();
                       var bundleMeta = (BundleMeta) hidden.getItemMeta();
                       bundleMeta.addItem(new ItemStack(Material.DIRT, 1));
@@ -247,6 +282,7 @@ jobs:
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
           grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5' server.log
           grep -q 'INTEGRATION_WALLET_PDC_PASSED' server.log
+          grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
           grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
