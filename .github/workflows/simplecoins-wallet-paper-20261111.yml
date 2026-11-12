@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: ee13fd88e85e7898794df34219530be7ffce5249
+          ref: db67a90c585d321694a141f2f0bdce114520e78b
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "ee13fd88e85e7898794df34219530be7ffce5249"
+          test "$(git rev-parse HEAD)" = "db67a90c585d321694a141f2f0bdce114520e78b"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -496,10 +496,21 @@ jobs:
                               || noOnlineAssets.isCompleteSettlementSource())
                           throw new AssertionError("An empty live Player set was misclassified");
                       getLogger().info("INTEGRATION_LIVE_PLAYER_ADAPTER_READY_EMPTY_SOURCE");
-                      // Inventory-bearing nonliving entities such as storage
-                      // minecarts must be included in loaded-chunk currency.
+                      // Isolate inventory-vehicle fixture from the earlier
+                      // wallet clone fixtures. Bukkit tile snapshots in the
+                      // same tick may retain the previous chest until the tick
+                      // boundary even after block Material is restored.
+                      var cartFixtureChunk = liveWorld.getChunkAt(
+                          spawnChunk.getX() + 8, spawnChunk.getZ() + 8);
+                      int cartX = cartFixtureChunk.getX() * 16 + 4;
+                      int cartZ = cartFixtureChunk.getZ() * 16 + 4;
+                      int cartY = Math.min(liveWorld.getMaxHeight() - 2,
+                          Math.max(liveWorld.getMinHeight() + 2,
+                              liveWorld.getHighestBlockYAt(cartX, cartZ) + 2));
+                      var cartFixtureBlock = liveWorld.getBlockAt(cartX, cartY, cartZ);
+                      Material cartOriginalBlock = cartFixtureBlock.getType();
                       var storageCart = liveWorld.spawn(
-                          new Location(liveWorld, lx + 4.5, ly + 0.5, lz + 4.5),
+                          new Location(liveWorld, cartX + 0.5, cartY + 0.5, cartZ + 0.5),
                           org.bukkit.entity.minecart.StorageMinecart.class);
                       try {
                           storageCart.getInventory().setItem(0,
@@ -525,8 +536,8 @@ jobs:
                           getLogger().info("CART_PROBE_WORLD_BASELINE_OK");
                           ItemStack copiedWallet = codec.withBalance(codec.create(), 600L);
                           storageCart.getInventory().setItem(1, copiedWallet);
-                          liveBlock.setType(Material.CHEST);
-                          var conflictChest = (Chest) liveBlock.getState();
+                          cartFixtureBlock.setType(Material.CHEST);
+                          var conflictChest = (Chest) cartFixtureBlock.getState();
                           conflictChest.getBlockInventory().setItem(0, copiedWallet.clone());
                           getLogger().info("CART_PROBE_DUPLICATE_FIXTURE_READY");
                           boolean rejectedCartCopy = false;
@@ -543,7 +554,7 @@ jobs:
                           getLogger().info("INTEGRATION_LIVE_INVENTORY_ENTITY_PASSED amount=80 duplicate-wallet-rejected");
                       } finally {
                           storageCart.remove();
-                          liveBlock.setType(originalBlockType);
+                          cartFixtureBlock.setType(cartOriginalBlock);
                       }
                       ItemStack hidden = colored.clone();
                       var bundleMeta = (BundleMeta) hidden.getItemMeta();
