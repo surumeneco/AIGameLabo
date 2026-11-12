@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins journal-lifecycle Paper 26.2 verification
+name: Isolated SimpleCoins live-item valuation Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-journal-lifecycle-20261112
+      - infra/chat-simplecoins-live-item-valuation-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 2e1ee4d6ba89936dd17c2b5412215049b24b2061
+          ref: 7fb79e102da2c8e4ecc872a33b36992696084c8d
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "2e1ee4d6ba89936dd17c2b5412215049b24b2061"
+          test "$(git rev-parse HEAD)" = "7fb79e102da2c8e4ecc872a33b36992696084c8d"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -56,6 +56,8 @@ jobs:
           import org.bukkit.plugin.java.JavaPlugin;
           import co.surumene.simplecoins.paper.WalletItemCodec;
           import co.surumene.simplecoins.paper.WalletMenu;
+          import co.surumene.simplecoins.paper.PaperLiveItemValue;
+          import org.bukkit.inventory.Inventory;
           import co.surumene.simplecoins.paper.CoinItemCodec;
           import co.surumene.simplecoins.domain.CoinDenomination;
           import co.surumene.simplecoins.domain.CoinExchangeFormula;
@@ -230,6 +232,39 @@ jobs:
                       if (!invalidSavedRejected)
                           throw new AssertionError("Corrupt Paper item_model bypassed saved-value guard");
                       getLogger().info("INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000");
+                      for (int face : faces) {
+                          var actualLiveCoin = physicalCoins.create(CoinDenomination.fromValue(face), 3);
+                          if (!PaperLiveItemValue.stack(actualLiveCoin, 1048576, 1048576)
+                                  .equals(BigInteger.valueOf(face * 3L)))
+                              throw new AssertionError("Live item valuation differs from saved: " + face);
+                      }
+                      if (!PaperLiveItemValue.stack(balanceWallet, 1048576, 1048576)
+                              .equals(BigInteger.valueOf(640000L)))
+                          throw new AssertionError("Live wallet balance missing");
+                      if (!PaperLiveItemValue.stack(null, 1048576, 1048576).equals(BigInteger.ZERO)
+                              || !PaperLiveItemValue.stack(new ItemStack(Material.PAPER), 1048576, 1048576)
+                                      .equals(BigInteger.ZERO))
+                          throw new AssertionError("Plain or empty live item gained monetary value");
+                      Inventory inventory = Bukkit.createInventory(null, 18);
+                      inventory.setItem(0, physicalCoins.create(CoinDenomination.HUNDRED, 3));
+                      inventory.setItem(1, balanceWallet);
+                      inventory.setItem(2, new ItemStack(Material.PAPER));
+                      if (!PaperLiveItemValue.inventory(inventory, 18, 1048576, 1048576)
+                              .equals(BigInteger.valueOf(640300L)))
+                          throw new AssertionError("Live inventory sum was not 640300");
+                      boolean rejectedLive = false;
+                      try { PaperLiveItemValue.stack(counterfeit, 1048576, 1048576); }
+                      catch (IOException expectedCorrupt) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("Live counterfeit must fail closed");
+                      rejectedLive = false;
+                      try { PaperLiveItemValue.inventory(inventory, 9, 1048576, 1048576); }
+                      catch (IOException expectedBudget) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("Inventory budget not enforced");
+                      rejectedLive = false;
+                      try { PaperLiveItemValue.stack(physicalCoins.create(CoinDenomination.ONE, 1), 1, 1048576); }
+                      catch (IOException expectedBudget) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("NBT byte budget not enforced");
+                      getLogger().info("INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300");
                       ItemStack hidden = colored.clone();
                       var bundleMeta = (BundleMeta) hidden.getItemMeta();
                       bundleMeta.addItem(new ItemStack(Material.DIRT, 1));
@@ -355,6 +390,7 @@ jobs:
           grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5' server.log
           grep -q 'INTEGRATION_WALLET_PDC_PASSED' server.log
           grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
+          grep -q 'INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300' server.log
           grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
