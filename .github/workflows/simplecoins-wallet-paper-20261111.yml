@@ -316,7 +316,7 @@ jobs:
                           UUID isolatedOffline = UUID.fromString(
                               "00000000-0000-0000-0000-000000009123");
                           var fakePlayerdata = getDataFolder().toPath()
-                              .resolve("paper-smoke-offline-player.dat");
+                              .resolve("playerdata/" + isolatedOffline + ".dat");
                           Files.createDirectories(fakePlayerdata.getParent());
                           var emptyNbtBuffer = new java.io.ByteArrayOutputStream();
                           try (var out = new java.io.DataOutputStream(emptyNbtBuffer)) {
