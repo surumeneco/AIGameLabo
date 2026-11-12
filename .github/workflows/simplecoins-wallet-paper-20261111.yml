@@ -71,6 +71,18 @@ jobs:
           import java.util.UUID;
 
           public final class RuntimeProbe extends JavaPlugin {
+              private static java.util.Map<String, Object> parseSerialized(ItemStack item)
+                      throws java.io.IOException {
+                  byte[] bytes = item.serializeAsBytes();
+                  if (bytes.length < 2) throw new java.io.IOException("Truncated Paper item serialization");
+                  java.io.InputStream stream = new ByteArrayInputStream(bytes);
+                  // Paper's ItemStack serialization may be GZIP-framed NBT.
+                  if ((bytes[0] & 255) == 0x1f && (bytes[1] & 255) == 0x8b)
+                      stream = new java.util.zip.GZIPInputStream(stream);
+                  try (stream) {
+                      return NbtReader.read(stream, 1048576);
+                  }
+              }
               @Override public void onEnable() {
                   getServer().getScheduler().runTaskLater(this, this::check, 10L);
               }
@@ -136,24 +148,22 @@ jobs:
                       var physicalCoins = new CoinItemCodec(CoinItemCodec.defaultNames());
                       for (int face : faces) {
                           ItemStack stack = physicalCoins.create(CoinDenomination.fromValue(face), 3);
-                          var serialized = stack.serializeAsBytes();
-                          var nbt = NbtReader.read(new ByteArrayInputStream(serialized), 1048576);
+                          var nbt = parseSerialized(stack);
+                          if (face == 100) getLogger().info("PAPER_COIN_NBT_ROOT_KEYS " + nbt.keySet());
                           BigInteger observed = StoredItemValue.value(nbt);
                           if (!observed.equals(BigInteger.valueOf((long) face * 3L)))
                               throw new AssertionError("Saved coin mismatch: " + face + " expected="
                                   + (face * 3L) + " actual=" + observed);
                       }
                       ItemStack balanceWallet = codec.withBalance(codec.create(), 640000L);
-                      var savedWallet = NbtReader.read(
-                          new ByteArrayInputStream(balanceWallet.serializeAsBytes()), 1048576);
+                      var savedWallet = parseSerialized(balanceWallet);
                       if (!StoredItemValue.value(savedWallet).equals(BigInteger.valueOf(640000L)))
                           throw new AssertionError("Saved wallet PDC balance mismatch");
                       ItemStack counterfeit = physicalCoins.create(CoinDenomination.HUNDRED, 1);
                       var counterfeitMeta = counterfeit.getItemMeta();
                       counterfeitMeta.setItemModel(new NamespacedKey("simplecoins", "coin_500"));
                       counterfeit.setItemMeta(counterfeitMeta);
-                      var badSaved = NbtReader.read(
-                          new ByteArrayInputStream(counterfeit.serializeAsBytes()), 1048576);
+                      var badSaved = parseSerialized(counterfeit);
                       boolean invalidSavedRejected = false;
                       try { StoredItemValue.value(badSaved); }
                       catch (java.io.IOException malformed) { invalidSavedRejected = true; }
