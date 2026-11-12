@@ -525,14 +525,16 @@ jobs:
                                       && e.amount().equals(BigInteger.valueOf(80L))))
                               throw new AssertionError("StorageMinecart currency not counted");
                           getLogger().info("CART_PROBE_SLICE_OK");
-                          var cartWorld = PaperLoadedWorldAssets.scan(liveWorld,
-                              10000, 100000, 100000, 1000000, 1048576, 1048576);
-                          if (cartWorld.scannedInventoryEntities() < 1
-                              || cartWorld.entries().stream().noneMatch(e ->
+                          // Repeat the same physical cart chunk without
+                          // importing prior wallet clones in other test chunks.
+                          var cartRevisit = PaperLoadedChunkAssets.scan(cartFixtureChunk,
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (cartRevisit.scannedInventoryEntities() < 1
+                              || cartRevisit.entries().stream().noneMatch(e ->
                                   e.physicalKey().equals(cartKey)
                                       && e.amount().equals(BigInteger.valueOf(80L)))
-                              || cartWorld.isCompleteSettlementSource())
-                              throw new AssertionError("Loaded-world cart inventory missing");
+                              || cartRevisit.isCompleteSettlementSource())
+                              throw new AssertionError("Cart chunk inventory missing");
                           getLogger().info("CART_PROBE_WORLD_BASELINE_OK");
                           ItemStack copiedWallet = codec.withBalance(codec.create(), 600L);
                           storageCart.getInventory().setItem(1, copiedWallet);
@@ -542,8 +544,8 @@ jobs:
                           getLogger().info("CART_PROBE_DUPLICATE_FIXTURE_READY");
                           boolean rejectedCartCopy = false;
                           try {
-                              PaperLoadedWorldAssets.scan(liveWorld,
-                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                              PaperLoadedChunkAssets.scan(cartFixtureChunk,
+                                  4096, 4096, 32768, 1048576, 1048576);
                           } catch (IOException cartWalletFault) {
                               rejectedCartCopy = cartWalletFault.getMessage() != null
                                   && cartWalletFault.getMessage().contains("Duplicate physical wallet UUID");
