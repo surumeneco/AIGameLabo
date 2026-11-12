@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 98a66fdb117f0973d70a51730ff0c8f2eaabd65a
+          ref: bc6945a57c5eb6babb8decdb90b02a7da8c0399b
           persist-credentials: false
       - name: Ensure immutable exact source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "98a66fdb117f0973d70a51730ff0c8f2eaabd65a"
+          test "$(git rev-parse HEAD)" = "bc6945a57c5eb6babb8decdb90b02a7da8c0399b"
           mkdir -p /tmp/sc-regression
           git rev-parse HEAD > /tmp/sc-regression/commit.txt
           git rev-parse HEAD^{tree} > /tmp/sc-regression/root-tree.txt
@@ -49,7 +49,7 @@ jobs:
               fail+=int(root.attrib.get("failures",0))
               err+=int(root.attrib.get("errors",0))
               skip+=int(root.attrib.get("skipped",0))
-          print("HYBRID_SETTLEMENT_STAGE_JDK25_JUNIT",len(files),"suites",count,"tests",fail,"failures",err,"errors",skip,"skipped")
+          print("HYBRID_LIVE_SOURCES_MANDATORY_JDK25_JUNIT",len(files),"suites",count,"tests",fail,"failures",err,"errors",skip,"skipped")
           assert count>=4 and fail==0 and err==0
           PY
       - name: Upload exact regression evidence
