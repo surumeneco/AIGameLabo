@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins Villager inventory Paper 26.2 verification
+name: Isolated SimpleCoins cross-world wallet identity Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-live-villager-paper-20261112
+      - infra/chat-simplecoins-live-universe-paper-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 9a769f45ea160b1f4b7d4f83ca125fb05146da3f
+          ref: d2f77d73411ca90b17c28d65bfd6c97f1a306b47
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "9a769f45ea160b1f4b7d4f83ca125fb05146da3f"
+          test "$(git rev-parse HEAD)" = "d2f77d73411ca90b17c28d65bfd6c97f1a306b47"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -60,6 +60,7 @@ jobs:
           import co.surumene.simplecoins.paper.PaperLoadedChunkAssets;
           import co.surumene.simplecoins.paper.PaperLoadedWorldAssets;
           import co.surumene.simplecoins.paper.PaperLivePlayerAssets;
+          import co.surumene.simplecoins.paper.PaperLiveUniverseAssets;
           import org.bukkit.Location;
           import org.bukkit.block.Chest;
           import org.bukkit.inventory.Inventory;
@@ -213,6 +214,76 @@ jobs:
                       // Prove the saved-value reader accepts *actual* Paper ItemStack
                       // serialization, not only hand-authored PDC/NBT test maps.
                       var physicalCoins = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      // Cross-world physical clone detection in a fresh source
+                      // generation, before other smoke fixtures mutate chests.
+                      if (Bukkit.getWorlds().size() < 2)
+                          throw new AssertionError("Two real Paper worlds required");
+                      var firstWorld = Bukkit.getWorlds().get(0);
+                      var secondWorld = Bukkit.getWorlds().get(1);
+                      var firstChunk = firstWorld.getChunkAt(
+                          firstWorld.getSpawnLocation().getChunk().getX() + 16,
+                          firstWorld.getSpawnLocation().getChunk().getZ() + 16);
+                      var secondChunkUniverse = secondWorld.getChunkAt(
+                          secondWorld.getSpawnLocation().getChunk().getX() + 16,
+                          secondWorld.getSpawnLocation().getChunk().getZ() + 16);
+                      int ux = firstChunk.getX() * 16 + 4;
+                      int uz = firstChunk.getZ() * 16 + 4;
+                      int uy = Math.min(firstWorld.getMaxHeight() - 2,
+                          Math.max(firstWorld.getMinHeight() + 2,
+                              firstWorld.getHighestBlockYAt(ux, uz) + 2));
+                      int wx = secondChunkUniverse.getX() * 16 + 4;
+                      int wz = secondChunkUniverse.getZ() * 16 + 4;
+                      int wy = Math.min(secondWorld.getMaxHeight() - 2,
+                          Math.max(secondWorld.getMinHeight() + 2,
+                              secondWorld.getHighestBlockYAt(wx, wz) + 2));
+                      var firstBlockUniverse = firstWorld.getBlockAt(ux, uy, uz);
+                      var secondBlockUniverse = secondWorld.getBlockAt(wx, wy, wz);
+                      Material firstOldType = firstBlockUniverse.getType();
+                      Material secondOldType = secondBlockUniverse.getType();
+                      var liveBudget = new PaperLiveUniverseAssets.Budget(
+                          2, 10000, 100000, 100000, 1000000, 1, 1048576, 1048576);
+                      try {
+                          firstBlockUniverse.setType(Material.CHEST);
+                          secondBlockUniverse.setType(Material.CHEST);
+                          ItemStack clonedAcrossWorlds = codec.withBalance(codec.create(), 800L);
+                          ((Chest) firstBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, clonedAcrossWorlds);
+                          ((Chest) secondBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, clonedAcrossWorlds.clone());
+                          boolean rejectedAcrossWorlds = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, secondWorld), liveBudget);
+                          } catch (IOException crossWorldDuplicate) {
+                              rejectedAcrossWorlds = crossWorldDuplicate.getMessage() != null
+                                  && crossWorldDuplicate.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!rejectedAcrossWorlds) throw crossWorldDuplicate;
+                          }
+                          if (!rejectedAcrossWorlds)
+                              throw new AssertionError("Two-world cloned wallet was counted");
+                          var differentWalletCodec = new WalletItemCodec(UUID::randomUUID, "C");
+                          ((Chest) secondBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, differentWalletCodec.withBalance(
+                                  differentWalletCodec.create(), 300L));
+                          var universe = PaperLiveUniverseAssets.scan(
+                              java.util.List.of(firstWorld, secondWorld), liveBudget);
+                          if (universe.worlds().size() != 2
+                              || universe.online().scannedPlayers() != 0
+                              || universe.total().compareTo(BigInteger.valueOf(1100L)) < 0
+                              || universe.isCompleteSettlementSource())
+                              throw new AssertionError("Distinct cross-world wallets were lost");
+                          boolean worldAliasRejected = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, firstWorld), liveBudget);
+                          } catch (IOException alias) { worldAliasRejected = true; }
+                          if (!worldAliasRejected)
+                              throw new AssertionError("Duplicate selected World was accepted");
+                          getLogger().info("INTEGRATION_LIVE_UNIVERSE_PASSED worlds=2 cloned-rejected distinct=1100");
+                      } finally {
+                          firstBlockUniverse.setType(firstOldType);
+                          secondBlockUniverse.setType(secondOldType);
+                      }
                       for (int face : faces) {
                           ItemStack stack = physicalCoins.create(CoinDenomination.fromValue(face), 3);
                           var nbt = parseSerialized(stack);
@@ -729,6 +800,7 @@ jobs:
           if grep -q 'INTEGRATION_PROBE_FAILED' server.log; then exit 1; fi
           if grep -q 'Error occurred while enabling' server.log; then exit 1; fi
           grep -q 'INTEGRATION_ADMISSION_CLOSED_PASSED' server.log
+          grep -q 'INTEGRATION_LIVE_UNIVERSE_PASSED worlds=2 cloned-rejected distinct=1100' server.log
           grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0' server.log
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
           grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
