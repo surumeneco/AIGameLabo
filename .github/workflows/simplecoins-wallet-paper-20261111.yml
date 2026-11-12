@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 88d7467826cd1105928e6a95e7fad358fb28ffbe
+          ref: 4fcfcf4d73af064b64becf7d9bbfa6863818addc
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "88d7467826cd1105928e6a95e7fad358fb28ffbe"
+          test "$(git rev-parse HEAD)" = "4fcfcf4d73af064b64becf7d9bbfa6863818addc"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
