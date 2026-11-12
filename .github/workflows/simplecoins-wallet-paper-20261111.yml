@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins live Player slot API Paper 26.2 verification
+name: Isolated SimpleCoins inventory vehicle Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-live-player-20261112
+      - infra/chat-simplecoins-inventory-vehicles-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: dca0cec86f54600726e1506e2c5d631dcd0a2156
+          ref: ee13fd88e85e7898794df34219530be7ffce5249
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "dca0cec86f54600726e1506e2c5d631dcd0a2156"
+          test "$(git rev-parse HEAD)" = "ee13fd88e85e7898794df34219530be7ffce5249"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -496,6 +496,52 @@ jobs:
                               || noOnlineAssets.isCompleteSettlementSource())
                           throw new AssertionError("An empty live Player set was misclassified");
                       getLogger().info("INTEGRATION_LIVE_PLAYER_ADAPTER_READY_EMPTY_SOURCE");
+                      // Inventory-bearing nonliving entities such as storage
+                      // minecarts must be included in loaded-chunk currency.
+                      var storageCart = liveWorld.spawn(
+                          new Location(liveWorld, lx + 4.5, ly + 0.5, lz + 4.5),
+                          org.bukkit.entity.minecart.StorageMinecart.class);
+                      try {
+                          storageCart.getInventory().setItem(0,
+                              physicalCoins.create(CoinDenomination.TEN, 8));
+                          String cartKey = "world/" + liveWorld.getName() + "/entity/"
+                              + storageCart.getUniqueId() + "/inventory/0";
+                          var cartSlice = PaperLoadedChunkAssets.scan(storageCart.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (cartSlice.scannedInventoryEntities() < 1
+                              || cartSlice.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(cartKey)
+                                      && e.amount().equals(BigInteger.valueOf(80L))))
+                              throw new AssertionError("StorageMinecart currency not counted");
+                          var cartWorld = PaperLoadedWorldAssets.scan(liveWorld,
+                              10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          if (cartWorld.scannedInventoryEntities() < 1
+                              || cartWorld.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(cartKey)
+                                      && e.amount().equals(BigInteger.valueOf(80L)))
+                              || cartWorld.isCompleteSettlementSource())
+                              throw new AssertionError("Loaded-world cart inventory missing");
+                          ItemStack copiedWallet = codec.withBalance(codec.create(), 600L);
+                          storageCart.getInventory().setItem(1, copiedWallet);
+                          liveBlock.setType(Material.CHEST);
+                          var conflictChest = (Chest) liveBlock.getState();
+                          conflictChest.getBlockInventory().setItem(0, copiedWallet.clone());
+                          boolean rejectedCartCopy = false;
+                          try {
+                              PaperLoadedWorldAssets.scan(liveWorld,
+                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          } catch (IOException cartWalletFault) {
+                              rejectedCartCopy = cartWalletFault.getMessage() != null
+                                  && cartWalletFault.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!rejectedCartCopy) throw cartWalletFault;
+                          }
+                          if (!rejectedCartCopy)
+                              throw new AssertionError("Inventory vehicle wallet clone was counted");
+                          getLogger().info("INTEGRATION_LIVE_INVENTORY_ENTITY_PASSED amount=80 duplicate-wallet-rejected");
+                      } finally {
+                          storageCart.remove();
+                          liveBlock.setType(originalBlockType);
+                      }
                       ItemStack hidden = colored.clone();
                       var bundleMeta = (BundleMeta) hidden.getItemMeta();
                       bundleMeta.addItem(new ItemStack(Material.DIRT, 1));
@@ -628,6 +674,7 @@ jobs:
           grep -q 'INTEGRATION_LIVE_DISPLAY_PASSED amount=1000 duplicate-wallet-rejected' server.log
           grep -q 'INTEGRATION_LIVE_EQUIPMENT_PASSED amount=700 duplicate-wallet-rejected' server.log
           grep -q 'INTEGRATION_LIVE_PLAYER_ADAPTER_READY_EMPTY_SOURCE' server.log
+          grep -q 'INTEGRATION_LIVE_INVENTORY_ENTITY_PASSED amount=80 duplicate-wallet-rejected' server.log
           grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
