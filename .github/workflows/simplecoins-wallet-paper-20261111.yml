@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins saved cross-player wallet de-dup Paper 26.2 verification
+name: Isolated SimpleCoins loaded-chunk value Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-cross-player-wallet-20261112
+      - infra/chat-simplecoins-live-chunk-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: cac123a5983ff6c02fb84c0d172778e045dfab46
+          ref: 2d5463f55262f1514f74a97221fbdb23995fe006
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "cac123a5983ff6c02fb84c0d172778e045dfab46"
+          test "$(git rev-parse HEAD)" = "2d5463f55262f1514f74a97221fbdb23995fe006"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -57,6 +57,9 @@ jobs:
           import co.surumene.simplecoins.paper.WalletItemCodec;
           import co.surumene.simplecoins.paper.WalletMenu;
           import co.surumene.simplecoins.paper.PaperLiveItemValue;
+          import co.surumene.simplecoins.paper.PaperLoadedChunkAssets;
+          import org.bukkit.Location;
+          import org.bukkit.block.Chest;
           import org.bukkit.inventory.Inventory;
           import co.surumene.simplecoins.paper.CoinItemCodec;
           import co.surumene.simplecoins.domain.CoinDenomination;
@@ -277,6 +280,52 @@ jobs:
                               .equals(BigInteger.valueOf(640300L)))
                           throw new AssertionError("Value did not recover when cloned wallet was removed");
                       getLogger().info("INTEGRATION_WALLET_UUID_DUPLICATE_REJECTED");
+                      // Real loaded world: one chest's physical block inventory and
+                      // a dropped Item Entity; never count the 54-slot double chest
+                      // alias or consider this partial result an entire settlement.
+                      var liveWorld = Bukkit.getWorlds().getFirst();
+                      var spawnChunk = liveWorld.getSpawnLocation().getChunk();
+                      int lx = spawnChunk.getX() * 16 + 4;
+                      int lz = spawnChunk.getZ() * 16 + 4;
+                      int ly = Math.min(liveWorld.getMaxHeight() - 2,
+                          Math.max(liveWorld.getMinHeight() + 2,
+                              liveWorld.getHighestBlockYAt(lx, lz) + 2));
+                      var liveBlock = liveWorld.getBlockAt(lx, ly, lz);
+                      var originalBlockType = liveBlock.getType();
+                      org.bukkit.entity.Item droppedProbe = null;
+                      try {
+                          liveBlock.setType(Material.CHEST);
+                          var chest = (Chest) liveBlock.getState();
+                          chest.getBlockInventory().setItem(0,
+                              physicalCoins.create(CoinDenomination.HUNDRED, 3));
+                          droppedProbe = liveWorld.dropItem(
+                              new Location(liveWorld, lx + 1.5, ly + 0.5, lz + 0.5),
+                              physicalCoins.create(CoinDenomination.FIFTY, 1));
+                          var slice = PaperLoadedChunkAssets.scan(liveBlock.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          String chestKey = "world/" + liveWorld.getName() + "/"
+                              + lx + "," + ly + "," + lz + ":0";
+                          String entityKey = "world/" + liveWorld.getName() + "/entity/"
+                              + droppedProbe.getUniqueId();
+                          boolean sawChest = slice.entries().stream().anyMatch(e ->
+                              e.physicalKey().equals(chestKey)
+                                  && e.amount().equals(BigInteger.valueOf(300L)));
+                          boolean sawDrop = slice.entries().stream().anyMatch(e ->
+                              e.physicalKey().equals(entityKey)
+                                  && e.amount().equals(BigInteger.valueOf(50L)));
+                          if (!sawChest || !sawDrop || slice.isCompleteSettlementSource())
+                              throw new AssertionError("Loaded chunk currency source missing or wrongly complete");
+                          boolean bounded = false;
+                          try {
+                              PaperLoadedChunkAssets.scan(liveBlock.getChunk(),
+                                  4096, 4096, 1, 1048576, 1048576);
+                          } catch (IOException expectedBound) { bounded = true; }
+                          if (!bounded) throw new AssertionError("Loaded chunk slot budget not enforced");
+                          getLogger().info("INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50");
+                      } finally {
+                          if (droppedProbe != null) droppedProbe.remove();
+                          liveBlock.setType(originalBlockType);
+                      }
                       ItemStack hidden = colored.clone();
                       var bundleMeta = (BundleMeta) hidden.getItemMeta();
                       bundleMeta.addItem(new ItemStack(Material.DIRT, 1));
@@ -404,6 +453,7 @@ jobs:
           grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
           grep -q 'INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300' server.log
           grep -q 'INTEGRATION_WALLET_UUID_DUPLICATE_REJECTED' server.log
+          grep -q 'INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50' server.log
           grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
