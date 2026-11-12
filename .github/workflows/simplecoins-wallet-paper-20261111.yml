@@ -370,7 +370,7 @@ jobs:
                                   java.util.Set.of(), (worldName, block) -> null,
                                   (worldName, chunkNbt) -> java.util.Map.of(),
                                   1048576, 1048576, (source, value) -> null);
-                          } catch (IllegalStateException expected) {
+                          } catch (IllegalStateException consumedCaptureException) {
                               reusedCaptureRejected = true;
                           }
                           if (!reusedCaptureRejected)
