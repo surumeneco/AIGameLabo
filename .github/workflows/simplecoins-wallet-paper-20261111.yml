@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins cross-world wallet identity Paper 26.2 verification
+name: SimpleCoins cross saved live wallet identity Paper 26.2
 on:
   push:
     branches:
-      - infra/chat-simplecoins-live-universe-paper-20261112
+      - infra/chat-simplecoins-cross-saved-live-paper-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: e1f879ea0d6de14af252599f9b6bd38ebd856a66
+          ref: 60418fdf6faa635a25f7a2a9641f6ec08e53c8ec
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "e1f879ea0d6de14af252599f9b6bd38ebd856a66"
+          test "$(git rev-parse HEAD)" = "60418fdf6faa635a25f7a2a9641f6ec08e53c8ec"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -273,13 +273,48 @@ jobs:
                           ((Chest) secondBlockUniverse.getState()).getBlockInventory()
                               .setItem(0, differentWalletCodec.withBalance(
                                   differentWalletCodec.create(), 300L));
+                          var sharedGeneration = new java.util.HashSet<UUID>();
                           var universe = PaperLiveUniverseAssets.scan(
-                              java.util.List.of(firstWorld, secondWorld), liveBudget);
+                              java.util.List.of(firstWorld, secondWorld), liveBudget,
+                              sharedGeneration);
                           if (universe.worlds().size() != 2
                               || universe.online().scannedPlayers() != 0
                               || universe.total().compareTo(BigInteger.valueOf(1100L)) < 0
                               || universe.isCompleteSettlementSource())
                               throw new AssertionError("Distinct cross-world wallets were lost");
+                          // Serialized Paper wallet is the saved NBT value
+                          // which an offline playerdata reader would visit.
+                          // A shared identity context must reject it in either
+                          // source order, even if each independently parses.
+                          boolean rejectSavedAfterLive = false;
+                          try {
+                              StoredItemValue.value(parseSerialized(clonedAcrossWorlds),
+                                  sharedGeneration);
+                          } catch (IOException duplicateSavedWallet) {
+                              rejectSavedAfterLive = duplicateSavedWallet.getMessage() != null
+                                  && duplicateSavedWallet.getMessage().contains(
+                                      "Duplicate physical wallet UUID");
+                              if (!rejectSavedAfterLive) throw duplicateSavedWallet;
+                          }
+                          if (!rejectSavedAfterLive)
+                              throw new AssertionError("Saved wallet duplicate after live was accepted");
+                          var savedFirstGeneration = new java.util.HashSet<UUID>();
+                          StoredItemValue.value(parseSerialized(clonedAcrossWorlds),
+                              savedFirstGeneration);
+                          boolean rejectLiveAfterSaved = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, secondWorld), liveBudget,
+                                  savedFirstGeneration);
+                          } catch (IOException duplicateLiveWallet) {
+                              rejectLiveAfterSaved = duplicateLiveWallet.getMessage() != null
+                                  && duplicateLiveWallet.getMessage().contains(
+                                      "Duplicate physical wallet UUID");
+                              if (!rejectLiveAfterSaved) throw duplicateLiveWallet;
+                          }
+                          if (!rejectLiveAfterSaved)
+                              throw new AssertionError("Live wallet duplicate after saved was accepted");
+                          getLogger().info("INTEGRATION_CROSS_SAVED_LIVE_WALLET_PASSED both-orders-rejected");
                           boolean worldAliasRejected = false;
                           try {
                               PaperLiveUniverseAssets.scan(
@@ -809,6 +844,7 @@ jobs:
           if grep -q 'Error occurred while enabling' server.log; then exit 1; fi
           grep -q 'INTEGRATION_ADMISSION_CLOSED_PASSED' server.log
           grep -q 'INTEGRATION_LIVE_UNIVERSE_PASSED worlds=2 cloned-rejected distinct=1100' server.log
+          grep -q 'INTEGRATION_CROSS_SAVED_LIVE_WALLET_PASSED both-orders-rejected' server.log
           grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0' server.log
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
           grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
