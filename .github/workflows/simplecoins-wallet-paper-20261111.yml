@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins loaded-chunk value Paper 26.2 verification
+name: Isolated SimpleCoins loaded-world wallet identity Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-live-chunk-20261112
+      - infra/chat-simplecoins-loaded-world-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 2d5463f55262f1514f74a97221fbdb23995fe006
+          ref: 981573c7d60e21147ed9332c2eef791fde08d5d5
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "2d5463f55262f1514f74a97221fbdb23995fe006"
+          test "$(git rev-parse HEAD)" = "981573c7d60e21147ed9332c2eef791fde08d5d5"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -58,6 +58,7 @@ jobs:
           import co.surumene.simplecoins.paper.WalletMenu;
           import co.surumene.simplecoins.paper.PaperLiveItemValue;
           import co.surumene.simplecoins.paper.PaperLoadedChunkAssets;
+          import co.surumene.simplecoins.paper.PaperLoadedWorldAssets;
           import org.bukkit.Location;
           import org.bukkit.block.Chest;
           import org.bukkit.inventory.Inventory;
@@ -322,6 +323,64 @@ jobs:
                           } catch (IOException expectedBound) { bounded = true; }
                           if (!bounded) throw new AssertionError("Loaded chunk slot budget not enforced");
                           getLogger().info("INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50");
+                          // Two physically distinct loaded chunks must not count
+                          // a copied wallet UUID twice in one world scan.
+                          var secondChunk = liveWorld.getChunkAt(
+                              spawnChunk.getX() + 2, spawnChunk.getZ());
+                          int bx = secondChunk.getX() * 16 + 4;
+                          int bz = secondChunk.getZ() * 16 + 4;
+                          int by = Math.min(liveWorld.getMaxHeight() - 2,
+                              Math.max(liveWorld.getMinHeight() + 2,
+                                  liveWorld.getHighestBlockYAt(bx, bz) + 2));
+                          var secondBlock = liveWorld.getBlockAt(bx, by, bz);
+                          Material previousSecond = secondBlock.getType();
+                          try {
+                              secondBlock.setType(Material.CHEST);
+                              var secondChest = (Chest) secondBlock.getState();
+                              ItemStack firstWallet = codec.withBalance(codec.create(), 1000L);
+                              chest.getBlockInventory().setItem(1, firstWallet);
+                              secondChest.getBlockInventory().setItem(0, firstWallet.clone());
+                              boolean rejectedCloned = false;
+                              try {
+                                  PaperLoadedWorldAssets.scan(liveWorld,
+                                      10000, 100000, 100000, 1000000, 1048576, 1048576);
+                              } catch (IOException expected) {
+                                  rejectedCloned = expected.getMessage() != null
+                                      && expected.getMessage().contains("Duplicate physical wallet UUID");
+                                  if (!rejectedCloned) throw expected;
+                              }
+                              if (!rejectedCloned)
+                                  throw new AssertionError("Cross-chunk cloned wallet was accepted");
+                              secondChest.getBlockInventory().setItem(0,
+                                  codec.withBalance(codec.create(), 250L));
+                              var worldReport = PaperLoadedWorldAssets.scan(liveWorld,
+                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                              String firstKey = "world/" + liveWorld.getName() + "/"
+                                  + lx + "," + ly + "," + lz + ":1";
+                              String secondKey = "world/" + liveWorld.getName() + "/"
+                                  + bx + "," + by + "," + bz + ":0";
+                              if (worldReport.isCompleteSettlementSource()
+                                  || worldReport.scannedChunks() < 2
+                                  || worldReport.entries().stream().noneMatch(e ->
+                                      e.physicalKey().equals(firstKey)
+                                          && e.amount().equals(BigInteger.valueOf(1000L)))
+                                  || worldReport.entries().stream().noneMatch(e ->
+                                      e.physicalKey().equals(secondKey)
+                                          && e.amount().equals(BigInteger.valueOf(250L))))
+                                  throw new AssertionError("Valid cross-chunk values were lost");
+                              boolean chunkBudgetRejected = false;
+                              try {
+                                  PaperLoadedWorldAssets.scan(liveWorld,
+                                      1, 100000, 100000, 1000000, 1048576, 1048576);
+                              } catch (IOException expected) { chunkBudgetRejected = true; }
+                              if (!chunkBudgetRejected)
+                                  throw new AssertionError("Loaded-world chunk budget was ignored");
+                              getLogger().info("INTEGRATION_LOADED_WORLD_WALLET_IDENTITY_PASSED chunks="
+                                  + worldReport.scannedChunks() + " distinct=1250");
+                          } finally {
+                              chest.getBlockInventory().setItem(1, null);
+                              secondBlock.setType(previousSecond);
+                          }
                       } finally {
                           if (droppedProbe != null) droppedProbe.remove();
                           liveBlock.setType(originalBlockType);
@@ -454,6 +513,7 @@ jobs:
           grep -q 'INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300' server.log
           grep -q 'INTEGRATION_WALLET_UUID_DUPLICATE_REJECTED' server.log
           grep -q 'INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50' server.log
+          grep -q 'INTEGRATION_LOADED_WORLD_WALLET_IDENTITY_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
           grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
