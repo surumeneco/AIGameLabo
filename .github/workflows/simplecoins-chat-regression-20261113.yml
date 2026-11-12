@@ -1,0 +1,24 @@
+name: Isolated SimpleCoins JDK25 regression
+on:
+  push:
+    branches: ["infra/simplecoins-20261113-chat"]
+permissions:
+  contents: read
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: e686f21b7e957d7db278074a0316fec1add89cd6
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.2.1"
+      - name: Compile and run full SimpleCoins JUnit at pinned revision
+        run: gradle --no-daemon clean test jar
