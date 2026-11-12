@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins wallet UUID de-dup Paper 26.2 verification
+name: Isolated SimpleCoins saved cross-player wallet de-dup Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-wallet-uuid-dedup-20261112
+      - infra/chat-simplecoins-cross-player-wallet-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 90a2c8ef27c1a35a609c9e94b817a3de6d73f904
+          ref: cac123a5983ff6c02fb84c0d172778e045dfab46
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "90a2c8ef27c1a35a609c9e94b817a3de6d73f904"
+          test "$(git rev-parse HEAD)" = "cac123a5983ff6c02fb84c0d172778e045dfab46"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
