@@ -1,8 +1,8 @@
-name: SimpleCoins Paper live Chunk/Player source capture JDK25
+name: SimpleCoins exact Paper physical entry Red
 on:
   push:
     branches:
-      - infra/chat-simplecoins-live-capture-20261112
+      - infra/chat-simplecoins-exact-entry-red-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 849484bb852c45016170b86ed395393782fcb30d
+          ref: 83e7f5093416e70705a552f33cef9b44482a82a3
           persist-credentials: false
       - name: Ensure immutable exact source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "849484bb852c45016170b86ed395393782fcb30d"
+          test "$(git rev-parse HEAD)" = "83e7f5093416e70705a552f33cef9b44482a82a3"
           mkdir -p /tmp/sc-regression
           git rev-parse HEAD > /tmp/sc-regression/commit.txt
           git rev-parse HEAD^{tree} > /tmp/sc-regression/root-tree.txt
@@ -49,7 +49,7 @@ jobs:
               fail+=int(root.attrib.get("failures",0))
               err+=int(root.attrib.get("errors",0))
               skip+=int(root.attrib.get("skipped",0))
-          print("PAPER_LIVE_SOURCE_CAPTURE_JDK25_JUNIT",len(files),"suites",count,"tests",fail,"failures",err,"errors",skip,"skipped")
+          print("PAPER_EXACT_ENTRY_RED_JDK25_JUNIT",len(files),"suites",count,"tests",fail,"failures",err,"errors",skip,"skipped")
           assert count>=4 and fail==0 and err==0
           PY
       - name: Upload exact regression evidence
