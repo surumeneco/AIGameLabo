@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: d2f77d73411ca90b17c28d65bfd6c97f1a306b47
+          ref: e1f879ea0d6de14af252599f9b6bd38ebd856a66
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "d2f77d73411ca90b17c28d65bfd6c97f1a306b47"
+          test "$(git rev-parse HEAD)" = "e1f879ea0d6de14af252599f9b6bd38ebd856a66"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -175,7 +175,7 @@ jobs:
                       if (validated != 20) throw new AssertionError("Exchange matrix incomplete");
                       getLogger().info("INTEGRATION_RECIPE_PREDICATES_PASSED count=" + validated);
                       var config = main.getConfig();
-                      if (!config.getBoolean("trader-drops.enabled") || config.getDouble("trader-drops.chance") != 0.5)
+                      if (!config.getBoolean("trader-drops.enabled") || config.getDouble("trader-drops.chance") != 0.1)
                           throw new AssertionError("approved default drop probability not loaded");
                       int[] faces = {1,5,10,50,100,500,1000,5000,10000};
                       int expected = 256;
@@ -184,7 +184,7 @@ jobs:
                               throw new AssertionError("invalid default denomination weight " + face);
                           expected /= 2;
                       }
-                      getLogger().info("INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5");
+                      getLogger().info("INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.1");
                       var codec = new WalletItemCodec(() ->
                           UUID.fromString("00000000-0000-0000-0000-000000000123"), "C");
                       ItemStack wallet = codec.create();
@@ -218,8 +218,16 @@ jobs:
                       // generation, before other smoke fixtures mutate chests.
                       if (Bukkit.getWorlds().size() < 2)
                           throw new AssertionError("Two real Paper worlds required");
-                      var firstWorld = Bukkit.getWorlds().get(0);
-                      var secondWorld = Bukkit.getWorlds().get(1);
+                      // Use two new isolated worlds: earlier smoke probes in
+                      // the default world intentionally create cloned-wallet
+                      // fixtures, and Bukkit tile snapshots may survive their
+                      // same-tick restoration. Those are unrelated to this test.
+                      var firstWorld = java.util.Objects.requireNonNull(
+                          Bukkit.createWorld(new org.bukkit.WorldCreator("sc_universe_a")
+                              .type(org.bukkit.WorldType.FLAT).generateStructures(false)));
+                      var secondWorld = java.util.Objects.requireNonNull(
+                          Bukkit.createWorld(new org.bukkit.WorldCreator("sc_universe_b")
+                              .type(org.bukkit.WorldType.FLAT).generateStructures(false)));
                       var firstChunk = firstWorld.getChunkAt(
                           firstWorld.getSpawnLocation().getChunk().getX() + 16,
                           firstWorld.getSpawnLocation().getChunk().getZ() + 16);
@@ -804,7 +812,7 @@ jobs:
           grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0' server.log
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
           grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
-          grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5' server.log
+          grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.1' server.log
           grep -q 'INTEGRATION_WALLET_PDC_PASSED' server.log
           grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
           grep -q 'INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300' server.log
