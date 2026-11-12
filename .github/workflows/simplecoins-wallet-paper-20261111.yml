@@ -1,8 +1,8 @@
-name: Isolated SimpleCoins integrated-safety Paper 26.2 verification
+name: Isolated SimpleCoins journal-lifecycle Paper 26.2 verification
 on:
   push:
     branches:
-      - infra/chat-simplecoins-integrated-safe-20261112
+      - infra/chat-simplecoins-journal-lifecycle-20261112
 permissions:
   contents: read
 jobs:
@@ -14,13 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: surumeneco/SimpleCoins
-          ref: 28597acf8256b84f922426383c775a14ae1b11c8
+          ref: 7197d425fd267250b4417a2fb13b975d6550d789
           persist-credentials: false
       - name: Verify exact HEAD and archive full source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "28597acf8256b84f922426383c775a14ae1b11c8"
+          test "$(git rev-parse HEAD)" = "7197d425fd267250b4417a2fb13b975d6550d789"
           mkdir -p /tmp/sc-integration
           git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
           git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
@@ -59,6 +59,11 @@ jobs:
           import co.surumene.simplecoins.paper.CoinItemCodec;
           import co.surumene.simplecoins.domain.CoinDenomination;
           import co.surumene.simplecoins.domain.CoinExchangeFormula;
+          import co.surumene.simplecoins.domain.NormalMutationJournal;
+          import co.surumene.simplecoins.domain.DurableFile;
+          import java.nio.ByteBuffer;
+          import java.nio.file.Files;
+          import java.io.IOException;
           import co.surumene.simplecoins.domain.StoredItemValue;
           import org.bukkit.inventory.RecipeChoice;
           import org.bukkit.inventory.ShapelessRecipe;
@@ -101,6 +106,21 @@ jobs:
                       if (provider == null || provider.getProvider().mayAdmit())
                           throw new AssertionError("unverified accounting must never grant admission");
                       getLogger().info("INTEGRATION_ADMISSION_CLOSED_PASSED");
+                      var journalPath = main.getDataFolder().toPath().resolve("normal-mutations");
+                      var headPath = journalPath.resolve("head");
+                      if (!Files.isRegularFile(headPath))
+                          throw new AssertionError("Durable startup journal head missing");
+                      byte[] persistedHead = DurableFile.read(headPath, 8);
+                      if (persistedHead.length != 8 || ByteBuffer.wrap(persistedHead).getLong() != 0)
+                          throw new AssertionError("New journal head is not sequence zero");
+                      boolean exclusive = false;
+                      try (var unexpected = new NormalMutationJournal(journalPath)) {
+                          // A second writer here would be a severe currency-integrity defect.
+                      } catch (IOException expectedLocked) {
+                          exclusive = true;
+                      }
+                      if (!exclusive) throw new AssertionError("Journal single-writer lock not held");
+                      getLogger().info("INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0");
                       int count = 0;
                       var it = Bukkit.recipeIterator();
                       while (it.hasNext()) {
@@ -329,6 +349,7 @@ jobs:
           if grep -q 'INTEGRATION_PROBE_FAILED' server.log; then exit 1; fi
           if grep -q 'Error occurred while enabling' server.log; then exit 1; fi
           grep -q 'INTEGRATION_ADMISSION_CLOSED_PASSED' server.log
+          grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0' server.log
           grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
           grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
           grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.5' server.log
