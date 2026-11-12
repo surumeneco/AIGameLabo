@@ -1,0 +1,67 @@
+name: SimpleCoins isolated saved-global-wallet regression JDK25
+on:
+  push:
+    branches:
+      - infra/chat-simplecoins-saved-global-wallet-20261112
+permissions:
+  contents: read
+jobs:
+  domain-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - name: Checkout exact SimpleCoins commit
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: f32dc916ca3b139843819f3d6b85a6c2fa75d2a6
+          persist-credentials: false
+      - name: Ensure immutable exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "f32dc916ca3b139843819f3d6b85a6c2fa75d2a6"
+          mkdir -p /tmp/sc-regression
+          git rev-parse HEAD > /tmp/sc-regression/commit.txt
+          git rev-parse HEAD^{tree} > /tmp/sc-regression/root-tree.txt
+          git archive --format=tar HEAD | gzip -n > /tmp/sc-regression/source.tar.gz
+          sha256sum /tmp/sc-regression/source.tar.gz > /tmp/sc-regression/source.sha256
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.2.1"
+      - name: Compile and execute all product JUnit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean test jar :admission-guard:jar
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          files=list(pathlib.Path("build/test-results/test").glob("TEST-*.xml"))+list(pathlib.Path("admission-guard/build/test-results/test").glob("TEST-*.xml"))
+          assert files, "No JUnit XML evidence"
+          count=fail=err=skip=0
+          for path in files:
+              root=ET.parse(path).getroot()
+              count+=int(root.attrib.get("tests",0))
+              fail+=int(root.attrib.get("failures",0))
+              err+=int(root.attrib.get("errors",0))
+              skip+=int(root.attrib.get("skipped",0))
+          print("SAVED_GLOBAL_WALLET_JDK25_JUNIT",len(files),"suites",count,"tests",fail,"failures",err,"errors",skip,"skipped")
+          assert count>=4 and fail==0 and err==0
+          PY
+      - name: Upload exact regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-saved-global-wallet-jdk25
+          path: |
+            /tmp/sc-regression/
+            build/test-results/test/
+            admission-guard/build/test-results/test/
+            build/libs/
+            admission-guard/build/libs/
+          retention-days: 7
+          if-no-files-found: warn
