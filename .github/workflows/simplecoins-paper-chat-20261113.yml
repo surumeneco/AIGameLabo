@@ -1,0 +1,1015 @@
+name: SimpleCoins cross-World source recheck Paper 26.2
+on:
+  push:
+    branches:
+      - infra/simplecoins-20261113-chat
+permissions:
+  contents: read
+jobs:
+  integrated-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - name: Checkout immutable SimpleCoins integration candidate
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: 3879a6478fe8a9f5d2218a9690ed5ebed13a48e1
+          persist-credentials: false
+      - name: Verify exact HEAD and archive full source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "3879a6478fe8a9f5d2218a9690ed5ebed13a48e1"
+          mkdir -p /tmp/sc-integration
+          git archive --format=tar HEAD | gzip -n > /tmp/sc-integration/exact-source.tar.gz
+          git rev-parse HEAD^{tree} > /tmp/sc-integration/tree.txt
+          sha256sum /tmp/sc-integration/exact-source.tar.gz > /tmp/sc-integration/source.sha256
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Compile and test both production plugin projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean test jar :admission-guard:jar
+          test -s build/libs/SimpleCoins-1.0.0.jar
+          test -s admission-guard/build/libs/admission-guard-1.0.0.jar
+          mkdir -p /tmp/sc-integration/plugins
+          cp build/libs/SimpleCoins-1.0.0.jar /tmp/sc-integration/plugins/SimpleCoins.jar
+          cp admission-guard/build/libs/admission-guard-1.0.0.jar /tmp/sc-integration/plugins/SimpleCoinsGuard.jar
+      - name: Compile actual Paper integration smoke probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/test/java/co/surumene/simplecoins/integration /tmp/sc-probe-desc
+          cat > src/test/java/co/surumene/simplecoins/integration/RuntimeProbe.java <<'JAVA'
+          package co.surumene.simplecoins.integration;
+          import co.surumene.simplecoins.guard.api.AdmissionPermit;
+          import org.bukkit.Bukkit;
+          import org.bukkit.NamespacedKey;
+          import org.bukkit.Keyed;
+          import org.bukkit.plugin.java.JavaPlugin;
+          import co.surumene.simplecoins.paper.WalletItemCodec;
+          import co.surumene.simplecoins.paper.WalletMenu;
+          import co.surumene.simplecoins.paper.PaperLiveItemValue;
+          import co.surumene.simplecoins.paper.PaperLoadedChunkAssets;
+          import co.surumene.simplecoins.paper.PaperLoadedWorldAssets;
+          import co.surumene.simplecoins.paper.PaperLivePlayerAssets;
+          import co.surumene.simplecoins.paper.PaperLiveUniverseAssets;
+          import co.surumene.simplecoins.paper.PaperCapturedHybridSettlement;
+          import co.surumene.simplecoins.domain.WorldStorageDiscovery;
+          import co.surumene.simplecoins.domain.WorldScope;
+          import co.surumene.simplecoins.domain.SettlementAccumulator;
+          import org.bukkit.Location;
+          import org.bukkit.block.Chest;
+          import org.bukkit.inventory.Inventory;
+          import co.surumene.simplecoins.paper.CoinItemCodec;
+          import co.surumene.simplecoins.domain.CoinDenomination;
+          import co.surumene.simplecoins.domain.CoinExchangeFormula;
+          import co.surumene.simplecoins.domain.NormalMutationJournal;
+          import co.surumene.simplecoins.domain.HybridLiveSourceStage;
+          import co.surumene.simplecoins.domain.DurableFile;
+          import java.nio.ByteBuffer;
+          import java.nio.file.Files;
+          import java.io.IOException;
+          import co.surumene.simplecoins.domain.StoredItemValue;
+          import org.bukkit.inventory.RecipeChoice;
+          import org.bukkit.inventory.ShapelessRecipe;
+          import java.util.EnumMap;
+          import co.surumene.simplecoins.domain.NbtReader;
+          import java.io.ByteArrayInputStream;
+          import java.math.BigInteger;
+          import org.bukkit.inventory.meta.BundleMeta;
+          import org.bukkit.event.EventHandler;
+          import org.bukkit.event.inventory.InventoryClickEvent;
+          import org.bukkit.event.HandlerList;
+          import org.bukkit.Material;
+          import org.bukkit.inventory.ItemStack;
+          import java.util.UUID;
+
+          public final class RuntimeProbe extends JavaPlugin {
+              private static java.util.Map<String, Object> parseSerialized(ItemStack item)
+                      throws java.io.IOException {
+                  byte[] bytes = item.serializeAsBytes();
+                  if (bytes.length < 2) throw new java.io.IOException("Truncated Paper item serialization");
+                  java.io.InputStream raw = new ByteArrayInputStream(bytes);
+                  // Paper's ItemStack serialization may be GZIP-framed NBT.
+                  java.io.InputStream decoded = ((bytes[0] & 255) == 0x1f
+                          && (bytes[1] & 255) == 0x8b)
+                      ? new java.util.zip.GZIPInputStream(raw) : raw;
+                  try (decoded) {
+                      return NbtReader.read(decoded, 1048576);
+                  }
+              }
+              @Override public void onEnable() {
+                  getServer().getScheduler().runTaskLater(this, this::check, 10L);
+              }
+              private void check() {
+                  try {
+                      var main = getServer().getPluginManager().getPlugin("SimpleCoins");
+                      var guard = getServer().getPluginManager().getPlugin("SimpleCoinsGuard");
+                      if (main == null || !main.isEnabled() || guard == null || !guard.isEnabled())
+                          throw new AssertionError("main and independent guard both must be enabled");
+                      var provider = getServer().getServicesManager().getRegistration(AdmissionPermit.class);
+                      if (provider == null || provider.getProvider().mayAdmit())
+                          throw new AssertionError("unverified accounting must never grant admission");
+                      getLogger().info("INTEGRATION_ADMISSION_CLOSED_PASSED");
+                      var journalPath = main.getDataFolder().toPath().resolve("normal-mutations");
+                      var headPath = journalPath.resolve("head");
+                      if (!Files.isRegularFile(headPath))
+                          throw new AssertionError("Durable startup journal head missing");
+                      byte[] persistedHead = DurableFile.read(headPath, 8);
+                      if (persistedHead.length != 8 || ByteBuffer.wrap(persistedHead).getLong() != 0)
+                          throw new AssertionError("New journal head is not sequence zero");
+                      boolean exclusive = false;
+                      try (var unexpected = new NormalMutationJournal(journalPath)) {
+                          // A second writer here would be a severe currency-integrity defect.
+                      } catch (IOException expectedLocked) {
+                          exclusive = true;
+                      }
+                      if (!exclusive) throw new AssertionError("Journal single-writer lock not held");
+                      getLogger().info("INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0");
+                      int count = 0;
+                      var it = Bukkit.recipeIterator();
+                      while (it.hasNext()) {
+                          var recipe = it.next();
+                          if (recipe instanceof Keyed keyed && keyed.getKey().getNamespace().equals("simplecoins")
+                                  && keyed.getKey().getKey().startsWith("exchange_"))
+                              count++;
+                      }
+                      if (count != 20) throw new AssertionError("expected 20 recipes, found " + count);
+                      getLogger().info("INTEGRATION_RECIPE_COUNT_PASSED count=" + count);
+                      // Verify all registered real recipe choices, not merely that keys exist.
+                      var fullCodec = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      int validated = 0;
+                      for (CoinExchangeFormula formula : CoinExchangeFormula.all()) {
+                          var key = new NamespacedKey(main, "exchange_" + formula.id());
+                          var resolved = Bukkit.getRecipe(key);
+                          if (!(resolved instanceof ShapelessRecipe shapeless))
+                              throw new AssertionError("Missing shapeless registered exchange: " + key);
+                          if (shapeless.getChoiceList().size() != formula.inputCount())
+                              throw new AssertionError("Wrong ingredient count: " + key);
+                          var expectedCoin = fullCodec.create(formula.input(), 1);
+                          var reconfiguredNames = new EnumMap<CoinDenomination, String>(CoinDenomination.class);
+                          reconfiguredNames.putAll(CoinItemCodec.defaultNames());
+                          reconfiguredNames.put(formula.input(), "Renamed " + formula.input().value());
+                          var renamedCoin = new CoinItemCodec(reconfiguredNames).create(formula.input(), 1);
+                          var invalidCoin = expectedCoin.clone();
+                          var invalidMeta = invalidCoin.getItemMeta();
+                          invalidMeta.setItemModel(new NamespacedKey("simplecoins", "coin_9999"));
+                          invalidCoin.setItemMeta(invalidMeta);
+                          for (RecipeChoice choice : shapeless.getChoiceList()) {
+                              if (!choice.test(expectedCoin) || !choice.test(renamedCoin))
+                                  throw new AssertionError("Genuine/renamed coin was rejected: " + key);
+                              if (choice.test(new ItemStack(Material.PAPER, 1)) || choice.test(invalidCoin))
+                                  throw new AssertionError("Normal or counterfeit paper accepted: " + key);
+                          }
+                          var output = shapeless.getResult();
+                          if (fullCodec.identify(output).orElseThrow() != formula.output()
+                                  || output.getAmount() != formula.outputCount()
+                                  || formula.totalValue() != (long) formula.outputCount()
+                                      * formula.output().value())
+                              throw new AssertionError("Exchange loses or duplicates value: " + key);
+                          validated++;
+                      }
+                      if (validated != 20) throw new AssertionError("Exchange matrix incomplete");
+                      getLogger().info("INTEGRATION_RECIPE_PREDICATES_PASSED count=" + validated);
+                      var config = main.getConfig();
+                      if (!config.getBoolean("trader-drops.enabled") || config.getDouble("trader-drops.chance") != 0.1)
+                          throw new AssertionError("approved default drop probability not loaded");
+                      int[] faces = {1,5,10,50,100,500,1000,5000,10000};
+                      int expected = 256;
+                      for (int face : faces) {
+                          if (config.getInt("trader-drops.weights." + face) != expected)
+                              throw new AssertionError("invalid default denomination weight " + face);
+                          expected /= 2;
+                      }
+                      getLogger().info("INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.1");
+                      var codec = new WalletItemCodec(() ->
+                          UUID.fromString("00000000-0000-0000-0000-000000000123"), "C");
+                      ItemStack wallet = codec.create();
+                      var original = codec.read(wallet).orElseThrow();
+                      if (wallet.getAmount() != 1 || original.balance() != 0
+                              || wallet.getMaxStackSize() != 1)
+                          throw new AssertionError("new wallet invalid");
+                      ItemStack loaded = ItemStack.deserializeBytes(wallet.serializeAsBytes());
+                      if (!codec.read(loaded).orElseThrow().equals(original))
+                          throw new AssertionError("wallet PDC lost on item serialize/deserialize");
+                      ItemStack credited = codec.withBalance(wallet, 640000L);
+                      var updated = codec.read(credited).orElseThrow();
+                      if (!updated.id().equals(original.id()) || updated.balance() != 640000L
+                              || codec.read(wallet).orElseThrow().balance() != 0)
+                          throw new AssertionError("wallet PDC edit mutated identity or original");
+                      ItemStack colored = codec.recolor(credited, Material.RED_BUNDLE);
+                      if (colored.getType() != Material.RED_BUNDLE
+                              || !codec.read(colored).orElseThrow().equals(updated))
+                          throw new AssertionError("wallet recolor changed UUID or money");
+                      if (codec.balance(colored).withdraw(10000L).amount() != 630000L)
+                          throw new AssertionError("wallet draw failed");
+                      boolean rejected = false;
+                      try { codec.balance(colored).deposit(1L, 500000L); }
+                      catch (IllegalStateException expectedException) { rejected = true; }
+                      if (!rejected) throw new AssertionError("reduced cap accepted deposit");
+                      getLogger().info("INTEGRATION_WALLET_PDC_PASSED");
+                      // Prove the saved-value reader accepts *actual* Paper ItemStack
+                      // serialization, not only hand-authored PDC/NBT test maps.
+                      var physicalCoins = new CoinItemCodec(CoinItemCodec.defaultNames());
+                      // Cross-world physical clone detection in a fresh source
+                      // generation, before other smoke fixtures mutate chests.
+                      if (Bukkit.getWorlds().size() < 2)
+                          throw new AssertionError("Two real Paper worlds required");
+                      // Use two new isolated worlds: earlier smoke probes in
+                      // the default world intentionally create cloned-wallet
+                      // fixtures, and Bukkit tile snapshots may survive their
+                      // same-tick restoration. Those are unrelated to this test.
+                      var firstWorld = java.util.Objects.requireNonNull(
+                          Bukkit.createWorld(new org.bukkit.WorldCreator("sc_universe_a")
+                              .type(org.bukkit.WorldType.FLAT).generateStructures(false)));
+                      var secondWorld = java.util.Objects.requireNonNull(
+                          Bukkit.createWorld(new org.bukkit.WorldCreator("sc_universe_b")
+                              .type(org.bukkit.WorldType.FLAT).generateStructures(false)));
+                      var firstChunk = firstWorld.getChunkAt(
+                          firstWorld.getSpawnLocation().getChunk().getX() + 16,
+                          firstWorld.getSpawnLocation().getChunk().getZ() + 16);
+                      var secondChunkUniverse = secondWorld.getChunkAt(
+                          secondWorld.getSpawnLocation().getChunk().getX() + 16,
+                          secondWorld.getSpawnLocation().getChunk().getZ() + 16);
+                      int ux = firstChunk.getX() * 16 + 4;
+                      int uz = firstChunk.getZ() * 16 + 4;
+                      int uy = Math.min(firstWorld.getMaxHeight() - 2,
+                          Math.max(firstWorld.getMinHeight() + 2,
+                              firstWorld.getHighestBlockYAt(ux, uz) + 2));
+                      int wx = secondChunkUniverse.getX() * 16 + 4;
+                      int wz = secondChunkUniverse.getZ() * 16 + 4;
+                      int wy = Math.min(secondWorld.getMaxHeight() - 2,
+                          Math.max(secondWorld.getMinHeight() + 2,
+                              secondWorld.getHighestBlockYAt(wx, wz) + 2));
+                      var firstBlockUniverse = firstWorld.getBlockAt(ux, uy, uz);
+                      var secondBlockUniverse = secondWorld.getBlockAt(wx, wy, wz);
+                      Material firstOldType = firstBlockUniverse.getType();
+                      Material secondOldType = secondBlockUniverse.getType();
+                      var liveBudget = new PaperLiveUniverseAssets.Budget(
+                          2, 10000, 100000, 100000, 1000000, 1, 1048576, 1048576);
+                      try {
+                          firstBlockUniverse.setType(Material.CHEST);
+                          secondBlockUniverse.setType(Material.CHEST);
+                          ItemStack clonedAcrossWorlds = codec.withBalance(codec.create(), 800L);
+                          ((Chest) firstBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, clonedAcrossWorlds);
+                          ((Chest) secondBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, clonedAcrossWorlds.clone());
+                          boolean rejectedAcrossWorlds = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, secondWorld), liveBudget);
+                          } catch (IOException crossWorldDuplicate) {
+                              rejectedAcrossWorlds = crossWorldDuplicate.getMessage() != null
+                                  && crossWorldDuplicate.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!rejectedAcrossWorlds) throw crossWorldDuplicate;
+                          }
+                          if (!rejectedAcrossWorlds)
+                              throw new AssertionError("Two-world cloned wallet was counted");
+                          var differentWalletCodec = new WalletItemCodec(UUID::randomUUID, "C");
+                          ((Chest) secondBlockUniverse.getState()).getBlockInventory()
+                              .setItem(0, differentWalletCodec.withBalance(
+                                  differentWalletCodec.create(), 300L));
+                          var sharedGeneration = new java.util.HashSet<UUID>();
+                          var universe = PaperLiveUniverseAssets.scan(
+                              java.util.List.of(firstWorld, secondWorld), liveBudget,
+                              sharedGeneration);
+                          if (universe.worlds().size() != 2
+                              || universe.online().scannedPlayers() != 0
+                              || universe.total().compareTo(BigInteger.valueOf(1100L)) < 0
+                              || universe.isCompleteSettlementSource())
+                              throw new AssertionError("Distinct cross-world wallets were lost");
+                          var detail = PaperLiveUniverseAssets.scanWithSources(
+                              java.util.List.of(firstWorld, secondWorld), liveBudget,
+                              new java.util.HashSet<UUID>());
+                          if (detail.sources().size() != detail.report().scannedChunks()
+                                  + detail.report().online().scannedPlayers()
+                              || !detail.report().total().equals(universe.total()))
+                              throw new AssertionError("Per-source value and coverage differ");
+                          boolean firstSource = false, secondSource = false;
+                          for (var source : detail.sources()) {
+                              if (source instanceof HybridLiveSourceStage.ChunkSource sourceChunk) {
+                                  if (sourceChunk.chunk().world().equals(firstWorld.getName())
+                                      && sourceChunk.values().stream().anyMatch(value ->
+                                          value.amount().equals(BigInteger.valueOf(800L))))
+                                      firstSource = true;
+                                  if (sourceChunk.chunk().world().equals(secondWorld.getName())
+                                      && sourceChunk.values().stream().anyMatch(value ->
+                                          value.amount().equals(BigInteger.valueOf(300L))))
+                                      secondSource = true;
+                              }
+                          }
+                          if (!firstSource || !secondSource ||
+                              detail.isCompleteSettlementSource())
+                              throw new AssertionError("Physical Chunk source provenance lost");
+                          getLogger().info("INTEGRATION_PAPER_LIVE_SOURCE_CAPTURE_PASSED worlds=2 distinct=1100");
+                          // Full read-only candidate path: real Paper chest assets
+                          // plus an empty, valid persisted offline playerdata NBT.
+                          UUID isolatedOffline = UUID.fromString(
+                              "00000000-0000-0000-0000-000000009123");
+                          var fakePlayerdata = getDataFolder().toPath()
+                              .resolve("playerdata/" + isolatedOffline + ".dat");
+                          Files.createDirectories(fakePlayerdata.getParent());
+                          var emptyNbtBuffer = new java.io.ByteArrayOutputStream();
+                          try (var out = new java.io.DataOutputStream(emptyNbtBuffer)) {
+                              out.writeByte(10);
+                              out.writeUTF("");
+                              out.writeByte(9); out.writeUTF("Inventory");
+                              out.writeByte(10); out.writeInt(0);
+                              out.writeByte(9); out.writeUTF("EnderItems");
+                              out.writeByte(10); out.writeInt(0);
+                              out.writeByte(0);
+                          }
+                          var packedNbt = new java.io.ByteArrayOutputStream();
+                          try (var zipped = new java.util.zip.GZIPOutputStream(packedNbt)) {
+                              zipped.write(emptyNbtBuffer.toByteArray());
+                          }
+                          Files.write(fakePlayerdata, packedNbt.toByteArray());
+                          var savedSources = new WorldStorageDiscovery.Manifest(
+                              java.util.List.of(), java.util.Map.of(isolatedOffline, fakePlayerdata));
+                          var capturedHybrid = PaperCapturedHybridSettlement.capture(
+                              java.util.List.of(firstWorld, secondWorld), liveBudget);
+                          if (capturedHybrid.observed().sources().size()
+                                  != detail.sources().size())
+                              throw new AssertionError("Hybrid lost observed live source IDs");
+                          var stagedHybrid = capturedHybrid.stageCandidate(
+                              savedSources, new WorldScope(true, java.util.Set.of(), java.util.Set.of()),
+                              java.util.Set.of(),
+                              (worldName, block) -> null,
+                              (worldName, chunkNbt) -> java.util.Map.of(),
+                              1048576, 1048576,
+                              (source, value) -> {
+                                  // This isolated fixture contains only chests with
+                                  // no BlockLocker signs; they are independently free.
+                                  if (!(source instanceof HybridLiveSourceStage.ChunkSource)
+                                          || value.world() == null)
+                                      throw new IOException("Unexpected owner source in fixture");
+                                  return new SettlementAccumulator.Asset(
+                                      source.id(), value.physicalKey(), value.world(),
+                                      null, false, false, true, value.amount(),
+                                      "isolated-paper-fixture/" + value.physicalKey());
+                              });
+                          var stagedTotal = stagedHybrid.pending().commit().statistics().worldTotal();
+                          if (!stagedTotal.equals(detail.report().total())
+                                  || stagedTotal.compareTo(BigInteger.valueOf(1100L)) < 0)
+                              throw new AssertionError("Hybrid actual Paper/live + offline NBT total mismatch "
+                                  + stagedTotal);
+                          boolean reusedCaptureRejected = false;
+                          try {
+                              capturedHybrid.stageCandidate(
+                                  savedSources,
+                                  new WorldScope(true, java.util.Set.of(), java.util.Set.of()),
+                                  java.util.Set.of(), (worldName, block) -> null,
+                                  (worldName, chunkNbt) -> java.util.Map.of(),
+                                  1048576, 1048576, (source, value) -> null);
+                          } catch (IllegalStateException consumedCaptureException) {
+                              reusedCaptureRejected = true;
+                          }
+                          if (!reusedCaptureRejected)
+                              throw new AssertionError("Consumed Paper capture was reused");
+                          getLogger().info("INTEGRATION_PAPER_HYBRID_STAGE_PASSED exact-source=" +
+                              stagedTotal + " one-shot=true");
+
+                          // Serialized Paper wallet is the saved NBT value
+                          // which an offline playerdata reader would visit.
+                          // A shared identity context must reject it in either
+                          // source order, even if each independently parses.
+                          boolean rejectSavedAfterLive = false;
+                          try {
+                              StoredItemValue.value(parseSerialized(clonedAcrossWorlds),
+                                  sharedGeneration);
+                          } catch (IOException duplicateSavedWallet) {
+                              rejectSavedAfterLive = duplicateSavedWallet.getMessage() != null
+                                  && duplicateSavedWallet.getMessage().contains(
+                                      "Duplicate physical wallet UUID");
+                              if (!rejectSavedAfterLive) throw duplicateSavedWallet;
+                          }
+                          if (!rejectSavedAfterLive)
+                              throw new AssertionError("Saved wallet duplicate after live was accepted");
+                          var savedFirstGeneration = new java.util.HashSet<UUID>();
+                          StoredItemValue.value(parseSerialized(clonedAcrossWorlds),
+                              savedFirstGeneration);
+                          boolean rejectLiveAfterSaved = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, secondWorld), liveBudget,
+                                  savedFirstGeneration);
+                          } catch (IOException duplicateLiveWallet) {
+                              rejectLiveAfterSaved = duplicateLiveWallet.getMessage() != null
+                                  && duplicateLiveWallet.getMessage().contains(
+                                      "Duplicate physical wallet UUID");
+                              if (!rejectLiveAfterSaved) throw duplicateLiveWallet;
+                          }
+                          if (!rejectLiveAfterSaved)
+                              throw new AssertionError("Live wallet duplicate after saved was accepted");
+                          getLogger().info("INTEGRATION_CROSS_SAVED_LIVE_WALLET_PASSED both-orders-rejected");
+                          boolean worldAliasRejected = false;
+                          try {
+                              PaperLiveUniverseAssets.scan(
+                                  java.util.List.of(firstWorld, firstWorld), liveBudget);
+                          } catch (IOException alias) { worldAliasRejected = true; }
+                          if (!worldAliasRejected)
+                              throw new AssertionError("Duplicate selected World was accepted");
+                          getLogger().info("INTEGRATION_LIVE_UNIVERSE_PASSED worlds=2 cloned-rejected distinct=1100");
+                      } finally {
+                          firstBlockUniverse.setType(firstOldType);
+                          secondBlockUniverse.setType(secondOldType);
+                      }
+                      for (int face : faces) {
+                          ItemStack stack = physicalCoins.create(CoinDenomination.fromValue(face), 3);
+                          var nbt = parseSerialized(stack);
+                          if (face == 100) getLogger().info("PAPER_COIN_NBT_ROOT_KEYS " + nbt.keySet());
+                          BigInteger observed = StoredItemValue.value(nbt);
+                          if (!observed.equals(BigInteger.valueOf((long) face * 3L)))
+                              throw new AssertionError("Saved coin mismatch: " + face + " expected="
+                                  + (face * 3L) + " actual=" + observed);
+                      }
+                      ItemStack balanceWallet = codec.withBalance(codec.create(), 640000L);
+                      var savedWallet = parseSerialized(balanceWallet);
+                      if (!StoredItemValue.value(savedWallet).equals(BigInteger.valueOf(640000L)))
+                          throw new AssertionError("Saved wallet PDC balance mismatch");
+                      ItemStack counterfeit = physicalCoins.create(CoinDenomination.HUNDRED, 1);
+                      var counterfeitMeta = counterfeit.getItemMeta();
+                      counterfeitMeta.setItemModel(new NamespacedKey("simplecoins", "coin_500"));
+                      counterfeit.setItemMeta(counterfeitMeta);
+                      var badSaved = parseSerialized(counterfeit);
+                      boolean invalidSavedRejected = false;
+                      try { StoredItemValue.value(badSaved); }
+                      catch (java.io.IOException malformed) { invalidSavedRejected = true; }
+                      if (!invalidSavedRejected)
+                          throw new AssertionError("Corrupt Paper item_model bypassed saved-value guard");
+                      getLogger().info("INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000");
+                      for (int face : faces) {
+                          var actualLiveCoin = physicalCoins.create(CoinDenomination.fromValue(face), 3);
+                          if (!PaperLiveItemValue.stack(actualLiveCoin, 1048576, 1048576)
+                                  .equals(BigInteger.valueOf(face * 3L)))
+                              throw new AssertionError("Live item valuation differs from saved: " + face);
+                      }
+                      if (!PaperLiveItemValue.stack(balanceWallet, 1048576, 1048576)
+                              .equals(BigInteger.valueOf(640000L)))
+                          throw new AssertionError("Live wallet balance missing");
+                      if (!PaperLiveItemValue.stack(null, 1048576, 1048576).equals(BigInteger.ZERO)
+                              || !PaperLiveItemValue.stack(new ItemStack(Material.PAPER), 1048576, 1048576)
+                                      .equals(BigInteger.ZERO))
+                          throw new AssertionError("Plain or empty live item gained monetary value");
+                      Inventory inventory = Bukkit.createInventory(null, 18);
+                      inventory.setItem(0, physicalCoins.create(CoinDenomination.HUNDRED, 3));
+                      inventory.setItem(1, balanceWallet);
+                      inventory.setItem(2, new ItemStack(Material.PAPER));
+                      if (!PaperLiveItemValue.inventory(inventory, 18, 1048576, 1048576)
+                              .equals(BigInteger.valueOf(640300L)))
+                          throw new AssertionError("Live inventory sum was not 640300");
+                      boolean rejectedLive = false;
+                      try { PaperLiveItemValue.stack(counterfeit, 1048576, 1048576); }
+                      catch (IOException expectedCorrupt) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("Live counterfeit must fail closed");
+                      rejectedLive = false;
+                      try { PaperLiveItemValue.inventory(inventory, 9, 1048576, 1048576); }
+                      catch (IOException expectedBudget) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("Inventory budget not enforced");
+                      rejectedLive = false;
+                      try { PaperLiveItemValue.stack(physicalCoins.create(CoinDenomination.ONE, 1), 1, 1048576); }
+                      catch (IOException expectedBudget) { rejectedLive = true; }
+                      if (!rejectedLive) throw new AssertionError("NBT byte budget not enforced");
+                      getLogger().info("INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300");
+                      // A cloned wallet UUID in a second slot is not two assets.
+                      inventory.setItem(3, balanceWallet.clone());
+                      boolean duplicateRejected = false;
+                      try { PaperLiveItemValue.inventory(inventory, 18, 1048576, 1048576); }
+                      catch (IOException duplicate) { duplicateRejected = true; }
+                      if (!duplicateRejected)
+                          throw new AssertionError("Cloned wallet identity double counted");
+                      inventory.setItem(3, null);
+                      if (!PaperLiveItemValue.inventory(inventory, 18, 1048576, 1048576)
+                              .equals(BigInteger.valueOf(640300L)))
+                          throw new AssertionError("Value did not recover when cloned wallet was removed");
+                      getLogger().info("INTEGRATION_WALLET_UUID_DUPLICATE_REJECTED");
+                      // Real loaded world: one chest's physical block inventory and
+                      // a dropped Item Entity; never count the 54-slot double chest
+                      // alias or consider this partial result an entire settlement.
+                      var liveWorld = Bukkit.getWorlds().getFirst();
+                      var spawnChunk = liveWorld.getSpawnLocation().getChunk();
+                      int lx = spawnChunk.getX() * 16 + 4;
+                      int lz = spawnChunk.getZ() * 16 + 4;
+                      int ly = Math.min(liveWorld.getMaxHeight() - 2,
+                          Math.max(liveWorld.getMinHeight() + 2,
+                              liveWorld.getHighestBlockYAt(lx, lz) + 2));
+                      var liveBlock = liveWorld.getBlockAt(lx, ly, lz);
+                      var originalBlockType = liveBlock.getType();
+                      org.bukkit.entity.Item droppedProbe = null;
+                      try {
+                          liveBlock.setType(Material.CHEST);
+                          var chest = (Chest) liveBlock.getState();
+                          chest.getBlockInventory().setItem(0,
+                              physicalCoins.create(CoinDenomination.HUNDRED, 3));
+                          droppedProbe = liveWorld.dropItem(
+                              new Location(liveWorld, lx + 1.5, ly + 0.5, lz + 0.5),
+                              physicalCoins.create(CoinDenomination.FIFTY, 1));
+                          var slice = PaperLoadedChunkAssets.scan(liveBlock.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          String chestKey = "world/" + liveWorld.getName() + "/"
+                              + lx + "," + ly + "," + lz + ":0";
+                          String entityKey = "world/" + liveWorld.getName() + "/entity/"
+                              + droppedProbe.getUniqueId();
+                          boolean sawChest = slice.entries().stream().anyMatch(e ->
+                              e.physicalKey().equals(chestKey)
+                                  && e.amount().equals(BigInteger.valueOf(300L)));
+                          boolean sawDrop = slice.entries().stream().anyMatch(e ->
+                              e.physicalKey().equals(entityKey)
+                                  && e.amount().equals(BigInteger.valueOf(50L)));
+                          if (!sawChest || !sawDrop || slice.isCompleteSettlementSource())
+                              throw new AssertionError("Loaded chunk currency source missing or wrongly complete");
+                          boolean bounded = false;
+                          try {
+                              PaperLoadedChunkAssets.scan(liveBlock.getChunk(),
+                                  4096, 4096, 1, 1048576, 1048576);
+                          } catch (IOException expectedBound) { bounded = true; }
+                          if (!bounded) throw new AssertionError("Loaded chunk slot budget not enforced");
+                          getLogger().info("INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50");
+                          // Two physically distinct loaded chunks must not count
+                          // a copied wallet UUID twice in one world scan.
+                          var secondChunk = liveWorld.getChunkAt(
+                              spawnChunk.getX() + 2, spawnChunk.getZ());
+                          int bx = secondChunk.getX() * 16 + 4;
+                          int bz = secondChunk.getZ() * 16 + 4;
+                          int by = Math.min(liveWorld.getMaxHeight() - 2,
+                              Math.max(liveWorld.getMinHeight() + 2,
+                                  liveWorld.getHighestBlockYAt(bx, bz) + 2));
+                          var secondBlock = liveWorld.getBlockAt(bx, by, bz);
+                          Material previousSecond = secondBlock.getType();
+                          try {
+                              secondBlock.setType(Material.CHEST);
+                              var secondChest = (Chest) secondBlock.getState();
+                              ItemStack firstWallet = codec.withBalance(codec.create(), 1000L);
+                              chest.getBlockInventory().setItem(1, firstWallet);
+                              secondChest.getBlockInventory().setItem(0, firstWallet.clone());
+                              boolean rejectedCloned = false;
+                              try {
+                                  PaperLoadedWorldAssets.scan(liveWorld,
+                                      10000, 100000, 100000, 1000000, 1048576, 1048576);
+                              } catch (IOException duplicateFault) {
+                                  rejectedCloned = duplicateFault.getMessage() != null
+                                      && duplicateFault.getMessage().contains("Duplicate physical wallet UUID");
+                                  if (!rejectedCloned) throw duplicateFault;
+                              }
+                              if (!rejectedCloned)
+                                  throw new AssertionError("Cross-chunk cloned wallet was accepted");
+                              // Prior deterministic test codec always uses the
+                              // same UUID. Use fresh UUIDs for a truly distinct
+                              // second wallet after testing the cloned failure.
+                              var distinctCodec = new WalletItemCodec(UUID::randomUUID, "C");
+                              secondChest.getBlockInventory().setItem(0,
+                                  distinctCodec.withBalance(distinctCodec.create(), 250L));
+                              var worldReport = PaperLoadedWorldAssets.scan(liveWorld,
+                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                              String firstKey = "world/" + liveWorld.getName() + "/"
+                                  + lx + "," + ly + "," + lz + ":1";
+                              String secondKey = "world/" + liveWorld.getName() + "/"
+                                  + bx + "," + by + "," + bz + ":0";
+                              if (worldReport.isCompleteSettlementSource()
+                                  || worldReport.scannedChunks() < 2
+                                  || worldReport.entries().stream().noneMatch(e ->
+                                      e.physicalKey().equals(firstKey)
+                                          && e.amount().equals(BigInteger.valueOf(1000L)))
+                                  || worldReport.entries().stream().noneMatch(e ->
+                                      e.physicalKey().equals(secondKey)
+                                          && e.amount().equals(BigInteger.valueOf(250L))))
+                                  throw new AssertionError("Valid cross-chunk values were lost");
+                              boolean chunkBudgetRejected = false;
+                              try {
+                                  PaperLoadedWorldAssets.scan(liveWorld,
+                                      1, 100000, 100000, 1000000, 1048576, 1048576);
+                              } catch (IOException budgetFault) { chunkBudgetRejected = true; }
+                              if (!chunkBudgetRejected)
+                                  throw new AssertionError("Loaded-world chunk budget was ignored");
+                              getLogger().info("INTEGRATION_LOADED_WORLD_WALLET_IDENTITY_PASSED chunks="
+                                  + worldReport.scannedChunks() + " distinct=1250");
+                          } finally {
+                              chest.getBlockInventory().setItem(1, null);
+                              secondBlock.setType(previousSecond);
+                          }
+                      } finally {
+                          if (droppedProbe != null) droppedProbe.remove();
+                          liveBlock.setType(originalBlockType);
+                      }
+                      // Display entities must now be read from actual loaded
+                      // Paper Items rather than silently counted as unhandled.
+                      var display = liveWorld.spawn(
+                          new Location(liveWorld, lx + 1.5, ly + 0.5, lz + 1.5),
+                          org.bukkit.entity.ItemDisplay.class);
+                      try {
+                          display.setItemStack(physicalCoins.create(CoinDenomination.FIVE_HUNDRED, 2));
+                          var observedDisplay = PaperLoadedChunkAssets.scan(display.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          String displayKey = "world/" + liveWorld.getName()
+                              + "/entity/" + display.getUniqueId() + "/display";
+                          if (observedDisplay.scannedDisplayEntities() < 1
+                              || observedDisplay.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(displayKey)
+                                      && e.amount().equals(BigInteger.valueOf(1000L))))
+                              throw new AssertionError("Live ItemDisplay coin was not counted");
+                          var worldDisplay = PaperLoadedWorldAssets.scan(liveWorld,
+                              10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          if (worldDisplay.scannedDisplayEntities() < 1
+                              || worldDisplay.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(displayKey)
+                                      && e.amount().equals(BigInteger.valueOf(1000L)))
+                              || worldDisplay.isCompleteSettlementSource())
+                              throw new AssertionError("World aggregate dropped displayed currency");
+                          // An ItemDisplay and a chest that both carry the same
+                          // cloned wallet UUID may never produce a successful sum.
+                          ItemStack displayedWallet = codec.withBalance(codec.create(), 750L);
+                          display.setItemStack(displayedWallet);
+                          liveBlock.setType(Material.CHEST);
+                          var holder = (Chest) liveBlock.getState();
+                          holder.getBlockInventory().setItem(0, displayedWallet.clone());
+                          boolean conflict = false;
+                          try {
+                              PaperLoadedWorldAssets.scan(liveWorld,
+                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          } catch (IOException duplicateDisplayWallet) {
+                              conflict = duplicateDisplayWallet.getMessage() != null
+                                  && duplicateDisplayWallet.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!conflict) throw duplicateDisplayWallet;
+                          }
+                          if (!conflict)
+                              throw new AssertionError("Display/chest cloned wallet was counted twice");
+                          getLogger().info("INTEGRATION_LIVE_DISPLAY_PASSED amount=1000 duplicate-wallet-rejected");
+                      } finally {
+                          display.remove();
+                          liveBlock.setType(originalBlockType);
+                      }
+                      // Read real non-player LivingEntity equipment on official Paper.
+                      var equipStand = liveWorld.spawn(
+                          new Location(liveWorld, lx + 2.5, ly + 1.0, lz + 2.5),
+                          org.bukkit.entity.ArmorStand.class);
+                      try {
+                          equipStand.getEquipment().setItemInMainHand(
+                              physicalCoins.create(CoinDenomination.HUNDRED, 7));
+                          String gearKey = "world/" + liveWorld.getName() + "/entity/"
+                              + equipStand.getUniqueId() + "/equipment/mainhand";
+                          var gearSlice = PaperLoadedChunkAssets.scan(equipStand.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (gearSlice.scannedEquipmentEntities() < 1
+                              || gearSlice.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(gearKey)
+                                      && e.amount().equals(BigInteger.valueOf(700L))))
+                              throw new AssertionError("ArmorStand equipped money not scanned");
+                          var gearWorld = PaperLoadedWorldAssets.scan(liveWorld,
+                              10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          if (gearWorld.scannedEquipmentEntities() < 1
+                              || gearWorld.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(gearKey)
+                                      && e.amount().equals(BigInteger.valueOf(700L)))
+                              || gearWorld.isCompleteSettlementSource())
+                              throw new AssertionError("Loaded-world equipment was lost");
+
+                          // Reuse the same identity guard between an equipped
+                          // Entity and a physically different storage block.
+                          ItemStack clonedGearWallet = codec.withBalance(codec.create(), 750L);
+                          equipStand.getEquipment().setItemInMainHand(clonedGearWallet);
+                          liveBlock.setType(Material.CHEST);
+                          var equipmentChest = (Chest) liveBlock.getState();
+                          equipmentChest.getBlockInventory().setItem(0, clonedGearWallet.clone());
+                          boolean refusedDuplicatedEquipmentWallet = false;
+                          try {
+                              PaperLoadedWorldAssets.scan(liveWorld,
+                                  10000, 100000, 100000, 1000000, 1048576, 1048576);
+                          } catch (IOException equipmentCloneFault) {
+                              refusedDuplicatedEquipmentWallet = equipmentCloneFault.getMessage() != null
+                                  && equipmentCloneFault.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!refusedDuplicatedEquipmentWallet) throw equipmentCloneFault;
+                          }
+                          if (!refusedDuplicatedEquipmentWallet)
+                              throw new AssertionError("Equipment/chest clone double-counted");
+                          getLogger().info("INTEGRATION_LIVE_EQUIPMENT_PASSED amount=700 duplicate-wallet-rejected");
+                      } finally {
+                          equipStand.remove();
+                          liveBlock.setType(originalBlockType);
+                      }
+                      // Admission is closed: the online Player source must be
+                      // compilable on real Paper, and an empty source may never
+                      // masquerade as a complete settlement.
+                      var noOnlineAssets = PaperLivePlayerAssets.scanOnline(
+                          1, 100, 1048576, 1048576);
+                      if (noOnlineAssets.scannedPlayers() != 0
+                              || noOnlineAssets.scannedSlots() != 0
+                              || noOnlineAssets.total().signum() != 0
+                              || noOnlineAssets.isCompleteSettlementSource())
+                          throw new AssertionError("An empty live Player set was misclassified");
+                      getLogger().info("INTEGRATION_LIVE_PLAYER_ADAPTER_READY_EMPTY_SOURCE");
+                      // Isolate inventory-vehicle fixture from the earlier
+                      // wallet clone fixtures. Bukkit tile snapshots in the
+                      // same tick may retain the previous chest until the tick
+                      // boundary even after block Material is restored.
+                      var cartFixtureChunk = liveWorld.getChunkAt(
+                          spawnChunk.getX() + 8, spawnChunk.getZ() + 8);
+                      int cartX = cartFixtureChunk.getX() * 16 + 4;
+                      int cartZ = cartFixtureChunk.getZ() * 16 + 4;
+                      int cartY = Math.min(liveWorld.getMaxHeight() - 2,
+                          Math.max(liveWorld.getMinHeight() + 2,
+                              liveWorld.getHighestBlockYAt(cartX, cartZ) + 2));
+                      var cartFixtureBlock = liveWorld.getBlockAt(cartX, cartY, cartZ);
+                      Material cartOriginalBlock = cartFixtureBlock.getType();
+                      var storageCart = liveWorld.spawn(
+                          new Location(liveWorld, cartX + 0.5, cartY + 0.5, cartZ + 0.5),
+                          org.bukkit.entity.minecart.StorageMinecart.class);
+                      try {
+                          storageCart.getInventory().setItem(0,
+                              physicalCoins.create(CoinDenomination.TEN, 8));
+                          String cartKey = "world/" + liveWorld.getName() + "/entity/"
+                              + storageCart.getUniqueId() + "/inventory/0";
+                          var cartSlice = PaperLoadedChunkAssets.scan(storageCart.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (cartSlice.scannedInventoryEntities() < 1
+                              || cartSlice.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(cartKey)
+                                      && e.amount().equals(BigInteger.valueOf(80L))))
+                              throw new AssertionError("StorageMinecart currency not counted");
+                          getLogger().info("CART_PROBE_SLICE_OK");
+                          // Repeat the same physical cart chunk without
+                          // importing prior wallet clones in other test chunks.
+                          var cartRevisit = PaperLoadedChunkAssets.scan(cartFixtureChunk,
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (cartRevisit.scannedInventoryEntities() < 1
+                              || cartRevisit.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(cartKey)
+                                      && e.amount().equals(BigInteger.valueOf(80L)))
+                              || cartRevisit.isCompleteSettlementSource())
+                              throw new AssertionError("Cart chunk inventory missing");
+                          getLogger().info("CART_PROBE_WORLD_BASELINE_OK");
+                          ItemStack copiedWallet = codec.withBalance(codec.create(), 600L);
+                          storageCart.getInventory().setItem(1, copiedWallet);
+                          cartFixtureBlock.setType(Material.CHEST);
+                          var conflictChest = (Chest) cartFixtureBlock.getState();
+                          conflictChest.getBlockInventory().setItem(0, copiedWallet.clone());
+                          getLogger().info("CART_PROBE_DUPLICATE_FIXTURE_READY");
+                          boolean rejectedCartCopy = false;
+                          try {
+                              PaperLoadedChunkAssets.scan(cartFixtureChunk,
+                                  4096, 4096, 32768, 1048576, 1048576);
+                          } catch (IOException cartWalletFault) {
+                              rejectedCartCopy = cartWalletFault.getMessage() != null
+                                  && cartWalletFault.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!rejectedCartCopy) throw cartWalletFault;
+                          }
+                          if (!rejectedCartCopy)
+                              throw new AssertionError("Inventory vehicle wallet clone was counted");
+                          getLogger().info("INTEGRATION_LIVE_INVENTORY_ENTITY_PASSED amount=80 duplicate-wallet-rejected");
+                      } finally {
+                          storageCart.remove();
+                          cartFixtureBlock.setType(cartOriginalBlock);
+                      }
+                      // Isolated physical source: a villager's internal 8-slot
+                      // inventory is distinct from its equipment slots.
+                      var villagerChunk = liveWorld.getChunkAt(
+                          spawnChunk.getX() + 12, spawnChunk.getZ() + 12);
+                      int vx = villagerChunk.getX() * 16 + 4;
+                      int vz = villagerChunk.getZ() * 16 + 4;
+                      int vy = Math.min(liveWorld.getMaxHeight() - 2,
+                          Math.max(liveWorld.getMinHeight() + 2,
+                              liveWorld.getHighestBlockYAt(vx, vz) + 2));
+                      var villagerBlock = liveWorld.getBlockAt(vx + 1, vy, vz);
+                      Material previousVillagerBlock = villagerBlock.getType();
+                      var liveVillager = liveWorld.spawn(
+                          new Location(liveWorld, vx + 0.5, vy + 0.5, vz + 0.5),
+                          org.bukkit.entity.Villager.class);
+                      try {
+                          liveVillager.getInventory().setItem(0,
+                              physicalCoins.create(CoinDenomination.HUNDRED, 2));
+                          String villagerKey = "world/" + liveWorld.getName() + "/entity/"
+                              + liveVillager.getUniqueId() + "/inventory/0";
+                          var scannedVillager = PaperLoadedChunkAssets.scan(liveVillager.getChunk(),
+                              4096, 4096, 32768, 1048576, 1048576);
+                          if (scannedVillager.scannedInventoryEntities() < 1
+                              || scannedVillager.scannedEquipmentEntities() < 1
+                              || scannedVillager.entries().stream().noneMatch(e ->
+                                  e.physicalKey().equals(villagerKey)
+                                      && e.amount().equals(BigInteger.valueOf(200L)))
+                              || scannedVillager.isCompleteSettlementSource())
+                              throw new AssertionError("Villager internal Inventory currency missing");
+                          // A cloned wallet in an independent Villager storage
+                          // and a nearby chest must reject this entire chunk.
+                          var copiedVillagerWallet = codec.withBalance(codec.create(), 650L);
+                          liveVillager.getInventory().setItem(1, copiedVillagerWallet);
+                          villagerBlock.setType(Material.CHEST);
+                          ((Chest) villagerBlock.getState()).getBlockInventory()
+                              .setItem(0, copiedVillagerWallet.clone());
+                          boolean rejectedVillagerClone = false;
+                          try {
+                              PaperLoadedChunkAssets.scan(liveVillager.getChunk(),
+                                  4096, 4096, 32768, 1048576, 1048576);
+                          } catch (IOException villagerCloneFailure) {
+                              rejectedVillagerClone = villagerCloneFailure.getMessage() != null
+                                  && villagerCloneFailure.getMessage().contains("Duplicate physical wallet UUID");
+                              if (!rejectedVillagerClone) throw villagerCloneFailure;
+                          }
+                          if (!rejectedVillagerClone)
+                              throw new AssertionError("Villager/chest wallet clone was double counted");
+                          getLogger().info("INTEGRATION_LIVE_VILLAGER_INVENTORY_PASSED amount=200 duplicate-wallet-rejected");
+                      } finally {
+                          liveVillager.remove();
+                          villagerBlock.setType(previousVillagerBlock);
+                      }
+                      ItemStack hidden = colored.clone();
+                      var bundleMeta = (BundleMeta) hidden.getItemMeta();
+                      bundleMeta.addItem(new ItemStack(Material.DIRT, 1));
+                      hidden.setItemMeta(bundleMeta);
+                      if (!codec.hasWalletMarker(hidden))
+                          throw new AssertionError("the PDC mutation fixture lost its marker");
+                      boolean refusedContents = false;
+                      try { codec.read(hidden); }
+                      catch (IllegalStateException invalidContents) { refusedContents = true; }
+                      if (!refusedContents)
+                          throw new AssertionError("wallet accepted hidden native Bundle contents");
+                      refusedContents = false;
+                      try { codec.withBalance(hidden, 1); }
+                      catch (IllegalStateException invalidContents) { refusedContents = true; }
+                      if (!refusedContents)
+                          throw new AssertionError("wallet balance edit accepted hidden contents");
+                      refusedContents = false;
+                      try { codec.recolor(hidden, Material.BLUE_BUNDLE); }
+                      catch (IllegalStateException invalidContents) { refusedContents = true; }
+                      if (!refusedContents)
+                          throw new AssertionError("wallet recolor accepted hidden contents");
+                      if (!codec.read(colored).orElseThrow().equals(updated))
+                          throw new AssertionError("safe wallet changed due to corrupted fixture");
+                      getLogger().info("INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED");
+                      ItemStack overstackable = colored.clone();
+                      var modifiable = overstackable.getItemMeta();
+                      modifiable.setMaxStackSize(64);
+                      overstackable.setItemMeta(modifiable);
+                      if (!codec.hasWalletMarker(overstackable)
+                              || overstackable.getMaxStackSize() != 64)
+                          throw new AssertionError("max-stack fixture did not produce a stackable wallet");
+                      boolean rejectsStack = false;
+                      try { codec.read(overstackable); }
+                      catch (IllegalStateException invalidCap) { rejectsStack = true; }
+                      if (!rejectsStack)
+                          throw new AssertionError("wallet accepted stackable duplicate UUID");
+                      rejectsStack = false;
+                      try { codec.withBalance(overstackable, 1L); }
+                      catch (IllegalStateException invalidCap) { rejectsStack = true; }
+                      if (!rejectsStack)
+                          throw new AssertionError("balance update accepted stackable wallet");
+                      getLogger().info("INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED");
+                      int wallets = 0;
+                      int dyes = 0;
+                      var recipes = Bukkit.recipeIterator();
+                      while (recipes.hasNext()) {
+                          var recipe = recipes.next();
+                          if (recipe instanceof Keyed keyed
+                                  && keyed.getKey().getNamespace().equals("simplecoins")) {
+                              if (keyed.getKey().getKey().equals("wallet")) wallets++;
+                              if (keyed.getKey().getKey().startsWith("wallet_dye_")) dyes++;
+                          }
+                      }
+                      if (wallets != 1 || dyes != 16)
+                          throw new AssertionError("wallet recipes unavailable " + wallets + "/" + dyes);
+                      getLogger().info("INTEGRATION_WALLET_RECIPES_PASSED count=" + (wallets + dyes));
+                      int walletHandlers = 0;
+                      for (var handlerList : HandlerList.getHandlerLists()) {
+                          for (var registration : handlerList.getRegisteredListeners()) {
+                              if (registration.getPlugin().equals(main)
+                                      && registration.getListener().getClass().getName().equals(
+                                          "co.surumene.simplecoins.paper.WalletMenu"))
+                                  walletHandlers++;
+                          }
+                      }
+                      if (walletHandlers != 4)
+                          throw new AssertionError("unexpected wallet listener count: " + walletHandlers);
+                      getLogger().info("INTEGRATION_WALLET_LISTENERS_PASSED count=" + walletHandlers);
+                      EventHandler click = WalletMenu.class
+                          .getDeclaredMethod("onClick", InventoryClickEvent.class)
+                          .getAnnotation(EventHandler.class);
+                      if (click == null || !click.ignoreCancelled())
+                          throw new AssertionError("WalletMenu may un-cancel protected inventory clicks");
+                      getLogger().info("INTEGRATION_WALLET_CANCEL_PRESERVATION_PASSED");
+                  } catch (Throwable failure) {
+                      getLogger().log(java.util.logging.Level.SEVERE,
+                          "INTEGRATION_PROBE_FAILED", failure);
+                  }
+              }
+          }
+          JAVA
+          cat > /tmp/sc-probe-desc/plugin.yml <<'YAML'
+          name: SimpleCoinsRuntimeProbe
+          version: 0.0.1
+          main: co.surumene.simplecoins.integration.RuntimeProbe
+          api-version: '26.2'
+          load: POSTWORLD
+          depend:
+            - SimpleCoinsGuard
+            - SimpleCoins
+          YAML
+          gradle --no-daemon testClasses
+          jar --create --file /tmp/sc-integration/plugins/RuntimeProbe.jar -C build/classes/java/test co/surumene/simplecoins/integration/RuntimeProbe.class -C /tmp/sc-probe-desc plugin.yml
+      - name: Download verified official Paper 26.2 build 134
+        shell: bash
+        run: |
+          set -euo pipefail
+          builds="$(curl --fail --silent --show-error --location --retry 3 https://fill.papermc.io/v3/projects/paper/versions/26.2/builds)"
+          url="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".url' | head -1)"
+          sha="$(echo "$builds" | jq -r '.[] | select(.id == 134 and .channel == "STABLE") | .downloads."server:default".checksums.sha256' | head -1)"
+          test -n "$url" && test "$url" != "null"
+          test -n "$sha" && test "$sha" != "null"
+          curl --fail --silent --show-error --location --retry 3 "$url" --output /tmp/sc-integration/paper.jar
+          (cd /tmp/sc-integration && echo "$sha  paper.jar" | sha256sum --check -)
+      - name: Boot both real plugin JARs and probe live Paper registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/sc-integration
+          echo 'eula=true' > eula.txt
+          printf 'online-mode=false\nserver-ip=127.0.0.1\nserver-port=25570\nview-distance=2\nsimulation-distance=2\nmax-players=1\n' > server.properties
+          set +e
+          (sleep 55; echo stop) | timeout --signal=TERM 150s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server.log 2>&1
+          rc="$?"
+          set -e
+          tail -n 100 server.log
+          test "$rc" -eq 0
+          if grep -q 'INTEGRATION_PROBE_FAILED' server.log; then exit 1; fi
+          if grep -q 'Error occurred while enabling' server.log; then exit 1; fi
+          grep -q 'INTEGRATION_ADMISSION_CLOSED_PASSED' server.log
+          grep -q 'INTEGRATION_LIVE_UNIVERSE_PASSED worlds=2 cloned-rejected distinct=1100' server.log
+          grep -q 'INTEGRATION_CROSS_SAVED_LIVE_WALLET_PASSED both-orders-rejected' server.log
+          grep -q 'INTEGRATION_PAPER_LIVE_SOURCE_CAPTURE_PASSED worlds=2 distinct=1100' server.log
+          grep -q 'INTEGRATION_PAPER_HYBRID_STAGE_PASSED exact-source=1100 one-shot=true' server.log
+          grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED head=0' server.log
+          grep -q 'INTEGRATION_RECIPE_COUNT_PASSED count=20' server.log
+          grep -q 'INTEGRATION_RECIPE_PREDICATES_PASSED count=20' server.log
+          grep -q 'INTEGRATION_TRADER_DEFAULTS_PASSED weights=256..1 chance=0.1' server.log
+          grep -q 'INTEGRATION_WALLET_PDC_PASSED' server.log
+          grep -q 'INTEGRATION_SAVED_ITEM_PDC_PARITY_PASSED count=9 wallet=640000' server.log
+          grep -q 'INTEGRATION_PAPER_LIVE_VALUATION_PASSED count=9 inventory=640300' server.log
+          grep -q 'INTEGRATION_WALLET_UUID_DUPLICATE_REJECTED' server.log
+          grep -q 'INTEGRATION_LOADED_CHUNK_ASSETS_PASSED block=300 item=50' server.log
+          grep -q 'INTEGRATION_LOADED_WORLD_WALLET_IDENTITY_PASSED' server.log
+          grep -q 'INTEGRATION_LIVE_DISPLAY_PASSED amount=1000 duplicate-wallet-rejected' server.log
+          grep -q 'INTEGRATION_LIVE_EQUIPMENT_PASSED amount=700 duplicate-wallet-rejected' server.log
+          grep -q 'INTEGRATION_LIVE_PLAYER_ADAPTER_READY_EMPTY_SOURCE' server.log
+          grep -q 'INTEGRATION_LIVE_INVENTORY_ENTITY_PASSED amount=80 duplicate-wallet-rejected' server.log
+          grep -q 'INTEGRATION_LIVE_VILLAGER_INVENTORY_PASSED amount=200 duplicate-wallet-rejected' server.log
+          grep -q 'INTEGRATION_WALLET_EMPTY_BUNDLE_GUARD_PASSED' server.log
+          grep -q 'INTEGRATION_WALLET_STACK_CAP_GUARD_PASSED' server.log
+          grep -q 'INTEGRATION_WALLET_RECIPES_PASSED count=17' server.log
+          grep -q 'INTEGRATION_WALLET_LISTENERS_PASSED count=4' server.log
+          grep -q 'INTEGRATION_WALLET_CANCEL_PRESERVATION_PASSED' server.log
+          grep -q 'Stopping server' server.log
+          grep -q 'Saving worlds' server.log
+          echo 'INTEGRATION_PAPER_26_2_BOOT_SUCCESS'
+      - name: Reject corrupt durable journal at real Paper startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/sc-integration
+          head=plugins/SimpleCoins/normal-mutations/head
+          test -f "$head"
+          # Simulate damage to the durable accounting state between restarts.
+          printf 'malformed-checksummed-head' > "$head"
+          set +e
+          (sleep 24; echo stop) | timeout --signal=TERM 80s java -Xms384M -Xmx1536M -jar paper.jar --nogui > server-corrupt.log 2>&1
+          rc="$?"
+          set -e
+          tail -n 75 server-corrupt.log
+          test "$rc" -ne 124
+          grep -q 'Cannot initialize durable normal monetary journal' server-corrupt.log
+          grep -q 'Failed to register admission protection' server-corrupt.log
+          grep -q 'Stopping server' server-corrupt.log
+          if grep -q 'INTEGRATION_DURABLE_JOURNAL_LOCK_PASSED' server-corrupt.log; then
+            echo 'Probe should never enable against corrupted journal' >&2
+            exit 1
+          fi
+          echo 'INTEGRATION_CORRUPT_JOURNAL_FAIL_CLOSED_PASSED'
+      - name: Upload Paper probe and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-guard-coin-paper
+          path: |
+            /tmp/sc-integration/server.log
+            /tmp/sc-integration/server-corrupt.log
+            /tmp/sc-integration/plugins/
+            build/test-results/test/
+            admission-guard/build/test-results/test/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-guard-coin-exact-source
+          path: |
+            /tmp/sc-integration/exact-source.tar.gz
+            /tmp/sc-integration/tree.txt
+            /tmp/sc-integration/source.sha256
+          retention-days: 7
+          if-no-files-found: warn
