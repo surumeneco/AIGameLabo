@@ -1,0 +1,31 @@
+name: CAT-TDD source snapshot 4840649f
+on:
+  push:
+    branches:
+      - infra/cat-tdd-w10-readonly-4840649f-20261113
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch immutable CAT-TDD source
+        run: |
+          git clone --no-checkout https://github.com/surumeneco/CAT-TDD.git source
+          cd source
+          git fetch origin 4840649fb21b1c0881a939ca4ae59565219bf3c4
+          git checkout --detach 4840649fb21b1c0881a939ca4ae59565219bf3c4
+          test "$(git rev-parse HEAD)" = "4840649fb21b1c0881a939ca4ae59565219bf3c4"
+          test "$(git rev-parse HEAD^{tree})" = "c5d677d8a18a4dc334daaf1490a74495883cf142"
+          git archive --format=tar.gz -o ../cat-tdd-source.tar.gz HEAD
+          cd ..
+          sha256sum cat-tdd-source.tar.gz > cat-tdd-source.sha256
+          printf '%s\n' '4840649fb21b1c0881a939ca4ae59565219bf3c4 c5d677d8a18a4dc334daaf1490a74495883cf142' > cat-tdd-source.manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-tdd-source-4840649f
+          path: |
+            cat-tdd-source.tar.gz
+            cat-tdd-source.sha256
+            cat-tdd-source.manifest
+          retention-days: 1
