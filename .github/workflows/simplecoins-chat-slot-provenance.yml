@@ -1,0 +1,25 @@
+name: SimpleCoins Chunk slot provenance red/green
+on:
+  push:
+    branches: ["infra/simplecoins-20261113-chat"]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned SimpleCoins
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: 5e00fa4c627fc072d9a28cce82ebc415ddd398ac
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Run targeted JUnit regression at exact SHA
+        run: gradle --no-daemon test --tests co.surumene.simplecoins.paper.PaperLiveBlockSlotChunkProvenanceTest
