@@ -1,0 +1,24 @@
+name: SimpleCoins saved-source closure red/green
+on:
+  push:
+    branches: ["infra/simplecoins-saved-closure-20261113-chat"]
+permissions:
+  contents: read
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: a3fadb44644bacd1b1c0988151aaedfc1c4a82e9
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Run exact SHA JUnit tests
+        run: gradle --no-daemon test --tests co.surumene.simplecoins.domain.SavedManifestDiscoveryClosureTest
