@@ -1,0 +1,37 @@
+name: CAT20 isolated CAT-TDD source snapshot
+on:
+  push:
+    branches:
+      - infra/cat20-source-snapshot-20261115
+    paths:
+      - .github/workflows/cat20-source-snapshot.yml
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch exact CAT-TDD commit, read-only
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: a768d8a2253f75741eba58e80e088993b1b165d6
+          persist-credentials: false
+          fetch-depth: 1
+          path: source
+      - name: Verify commit/tree and create immutable archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "a768d8a2253f75741eba58e80e088993b1b165d6"
+          test "$(git -C source rev-parse HEAD^{tree})" = "5c841e216d3d91a8b9965c0ebd314fd296f6cbf4"
+          mkdir -p bundle
+          git -C source archive --format=tar HEAD | gzip -n > bundle/source.tar.gz
+          sha256sum bundle/source.tar.gz | tee bundle/source.sha256
+          printf '%s\n' '{"repository":"surumeneco/CAT-TDD","commit":"a768d8a2253f75741eba58e80e088993b1b165d6","tree":"5c841e216d3d91a8b9965c0ebd314fd296f6cbf4","kind":"read-only-source-snapshot"}' > bundle/manifest.json
+      - name: Publish source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat20-source-a768d8a2
+          path: bundle/
+          retention-days: 1
