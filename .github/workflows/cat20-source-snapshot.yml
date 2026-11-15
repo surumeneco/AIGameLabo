@@ -1,0 +1,33 @@
+name: CAT20 final postfix isolated CAT-TDD snapshot
+on:
+  push:
+    branches: [infra/cat20-source-snapshot-20261115]
+    paths: [.github/workflows/cat20-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 30e824d66f4f2c2829cc79f4e67932493f33f73d
+          persist-credentials: false
+          fetch-depth: 1
+          path: source
+      - name: Verify immutable HEAD and tree, archive read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "30e824d66f4f2c2829cc79f4e67932493f33f73d"
+          test "$(git -C source rev-parse HEAD^{tree})" = "e7ed7007ecc27af303ce3dad864524b084c62fbf"
+          mkdir -p bundle
+          git -C source archive --format=tar HEAD | gzip -n > bundle/source.tar.gz
+          sha256sum bundle/source.tar.gz | tee bundle/source.sha256
+          printf '%s\n' '{"repository":"surumeneco/CAT-TDD","commit":"30e824d66f4f2c2829cc79f4e67932493f33f73d","tree":"e7ed7007ecc27af303ce3dad864524b084c62fbf","kind":"read-only-source-snapshot"}' > bundle/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat20-postfix-30e824d6
+          path: bundle/
+          retention-days: 1
