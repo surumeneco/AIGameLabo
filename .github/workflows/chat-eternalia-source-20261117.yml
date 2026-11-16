@@ -1,0 +1,40 @@
+name: Chat read-only Eternalia pinned source snapshot
+on:
+  push:
+    branches:
+      - infra/chat-eternalia-source-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned public Eternalia revision without credentials
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/Eternalia_Novel
+          ref: cb196c128158412798017e7bf2491d8255e9ac19
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify immutable target and package source plus Git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "cb196c128158412798017e7bf2491d8255e9ac19"
+          test "$(git rev-parse HEAD^{tree})" = "b9737213f5cabaa0b69054e012a97497ed8fb3a0"
+          test -z "$(git status --porcelain)"
+          mkdir -p "$RUNNER_TEMP/chat-eternalia-source"
+          tar -czf "$RUNNER_TEMP/chat-eternalia-source/project-with-git.tar.gz" -C "$GITHUB_WORKSPACE" .
+          cd "$RUNNER_TEMP/chat-eternalia-source"
+          sha256sum project-with-git.tar.gz > sha256.txt
+          printf 'repository=surumeneco/Eternalia_Novel\ncommit=cb196c128158412798017e7bf2491d8255e9ac19\ntree=b9737213f5cabaa0b69054e012a97497ed8fb3a0\n' > source.txt
+      - name: Upload read-only source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-eternalia-source-cb196c1
+          path: ${{ runner.temp }}/chat-eternalia-source/
+          retention-days: 1
+          if-no-files-found: error
