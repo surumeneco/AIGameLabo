@@ -1,0 +1,35 @@
+name: CAT33 fixed upstream read-only source snapshot
+on:
+  push:
+    branches:
+      - infra/chat-cat33-upstream-06914751-20261118
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact CAT-TDD main commit without scripts
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 06914751b500960d6a0623df92ab054370dada92
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Archive verified source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cat33-upstream
+          test "$(git rev-parse HEAD)" = "06914751b500960d6a0623df92ab054370dada92"
+          test "$(git rev-parse HEAD^{tree})" = "82b3222210693597d03d4b02b3aef608174bc44d"
+          git archive --format=tar --output=/tmp/cat33-upstream/source.tar HEAD
+          sha256sum /tmp/cat33-upstream/source.tar > /tmp/cat33-upstream/source.tar.sha256
+          printf 'repository=surumeneco/CAT-TDD\ncommit=06914751b500960d6a0623df92ab054370dada92\ntree=82b3222210693597d03d4b02b3aef608174bc44d\n' > /tmp/cat33-upstream/manifest.txt
+      - name: Upload immutable source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat33-upstream-06914751
+          path: /tmp/cat33-upstream/
+          retention-days: 1
+          if-no-files-found: error
