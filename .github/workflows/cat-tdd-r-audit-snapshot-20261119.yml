@@ -1,0 +1,39 @@
+name: CAT TDD fixed upstream snapshot 2026-11-19
+on:
+  push:
+    branches:
+      - infra/cat-tdd-r-audit-source-20261119
+    paths:
+      - .github/workflows/cat-tdd-r-audit-snapshot-20261119.yml
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact upstream commit (read only)
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 932e298c4f6b654231138ed752390f8fb1c93fc1
+          persist-credentials: false
+      - name: Archive authenticated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "932e298c4f6b654231138ed752390f8fb1c93fc1"
+          git archive --format=tar --output=cat-tdd-main-932e298c.tar HEAD
+          git rev-parse HEAD > source-commit.txt
+          git rev-parse HEAD^{tree} > source-tree.txt
+          sha256sum cat-tdd-main-932e298c.tar > archive-sha256.txt
+          wc -c cat-tdd-main-932e298c.tar
+      - name: Upload read-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat-tdd-main-932e298c-source-20261119
+          path: |
+            cat-tdd-main-932e298c.tar
+            source-commit.txt
+            source-tree.txt
+            archive-sha256.txt
+          retention-days: 1
