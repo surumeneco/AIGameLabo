@@ -1,0 +1,35 @@
+name: CAT41 read-only source snapshot
+on:
+  push:
+    branches:
+      - infra/cat41-source-snapshot-20261120
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fixed public CAT-TDD commit
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: c56b1e1f46867dfe2e5ac655907a62ebbe86b74c
+          persist-credentials: false
+      - name: Archive source and verify identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c56b1e1f46867dfe2e5ac655907a62ebbe86b74c"
+          test "$(git rev-parse HEAD^{tree})" = "79ff90489fa85f654aae387261e47640eb3fbcdb"
+          git archive --format=tar --prefix=cat-tdd/ HEAD | gzip -n > cat-tdd-source.tar.gz
+          sha256sum cat-tdd-source.tar.gz > cat-tdd-source.sha256
+          printf '%s\n' 'repository=surumeneco/CAT-TDD' 'commit=c56b1e1f46867dfe2e5ac655907a62ebbe86b74c' 'tree=79ff90489fa85f654aae387261e47640eb3fbcdb' > source-provenance.txt
+      - name: Upload immutable source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat41-upstream-c56-source
+          path: |
+            cat-tdd-source.tar.gz
+            cat-tdd-source.sha256
+            source-provenance.txt
+          retention-days: 1
