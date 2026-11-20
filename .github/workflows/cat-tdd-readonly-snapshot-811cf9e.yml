@@ -1,0 +1,38 @@
+name: CAT-TDD read-only snapshot 811cf9e
+on:
+  push:
+    branches:
+      - 'infra/chat-cat-tdd-snapshot-811cf9e-20261120'
+    paths:
+      - '.github/workflows/cat-tdd-readonly-snapshot-811cf9e.yml'
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact CAT-TDD commit read-only
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/CAT-TDD
+          ref: 811cf9e774059dc50886d20083287da03d8758ca
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify source and archive exact tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "811cf9e774059dc50886d20083287da03d8758ca"
+          test "$(git rev-parse HEAD^{tree})" = "ef63434210b31e1119ce210c97012990ff7f100c"
+          git archive --format=tar.gz --output=/tmp/cat-tdd-811cf9e.tar.gz HEAD
+          cd /tmp
+          sha256sum cat-tdd-811cf9e.tar.gz > cat-tdd-811cf9e.tar.gz.sha256
+          printf '%s\n' '{"repository":"surumeneco/CAT-TDD","commit":"811cf9e774059dc50886d20083287da03d8758ca","tree":"ef63434210b31e1119ce210c97012990ff7f100c","kind":"read-only-git-archive"}' > manifest.json
+          zip -q cat-tdd-811cf9e-snapshot.zip cat-tdd-811cf9e.tar.gz cat-tdd-811cf9e.tar.gz.sha256 manifest.json
+      - name: Upload transport artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat-tdd-811cf9e-snapshot
+          path: /tmp/cat-tdd-811cf9e-snapshot.zip
+          if-no-files-found: error
+          retention-days: 1
