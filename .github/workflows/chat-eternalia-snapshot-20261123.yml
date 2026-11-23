@@ -1,0 +1,35 @@
+name: Chat immutable Eternalia source snapshot
+on:
+  push:
+    branches:
+      - infra/chat-eternalia-snapshot-20261123
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out public immutable Eternalia source
+        uses: actions/checkout@v4
+        with:
+          repository: surumeneco/Eternalia_Novel
+          ref: 1faf30ade6146da607a3d76d4efcfcf352c5afc7
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify identity and package read-only source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '1faf30ade6146da607a3d76d4efcfcf352c5afc7'
+          test "$(git rev-parse HEAD^{tree})" = '53bb748ee8c1bec922101999c1ca23af4e1969f2'
+          mkdir -p "${RUNNER_TEMP}/eternalia-snapshot"
+          git archive --format=tar --output="${RUNNER_TEMP}/eternalia-snapshot/source.tar" HEAD
+          printf '%s\n' 'surumeneco/Eternalia_Novel' '1faf30ade6146da607a3d76d4efcfcf352c5afc7' '53bb748ee8c1bec922101999c1ca23af4e1969f2' > "${RUNNER_TEMP}/eternalia-snapshot/identity.txt"
+          (cd "${RUNNER_TEMP}/eternalia-snapshot" && sha256sum source.tar > source.tar.sha256)
+      - name: Transfer immutable source bytes
+        uses: actions/upload-artifact@v4
+        with:
+          name: eternalia-source-1faf30a
+          path: ${{ runner.temp }}/eternalia-snapshot/
+          if-no-files-found: error
+          retention-days: 1
