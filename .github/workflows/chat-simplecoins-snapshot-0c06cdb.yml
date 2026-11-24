@@ -1,0 +1,32 @@
+name: Fixed SimpleCoins source snapshot
+on:
+  push:
+    branches: ['infra/chat-simplecoins-snapshot-0c06cdb-20261124']
+    paths: ['.github/workflows/chat-simplecoins-snapshot-0c06cdb.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: surumeneco/SimpleCoins
+          ref: 0c06cdbf27f6997a2e12aea97c978082f503a6fd
+          path: project
+          persist-credentials: false
+      - name: Verify and archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C project rev-parse HEAD)" = 0c06cdbf27f6997a2e12aea97c978082f503a6fd
+          test "$(git -C project rev-parse HEAD^{tree})" = 5b6a3991c9cbe9c5baa058fd2f02685f295e5627
+          mkdir snapshot
+          git -C project archive --format=tar.gz HEAD > snapshot/project.tar.gz
+          sha256sum snapshot/project.tar.gz
+          printf '%s\n' 'surumeneco/SimpleCoins' '0c06cdbf27f6997a2e12aea97c978082f503a6fd' '5b6a3991c9cbe9c5baa058fd2f02685f295e5627' > snapshot/identity.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simplecoins-0c06cdb-source
+          path: snapshot/
+          retention-days: 1
